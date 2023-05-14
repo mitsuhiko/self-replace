@@ -29,7 +29,7 @@ jobs:
       - name: Check
         run: make check
       - name: Demo
-        run: demo.bat
+        run: ./demo.bat
 
   test-stable:
     name: Build on 1.61.0
