@@ -2,11 +2,14 @@
 name = "self-replace"
 version = "1.0.0"
 authors = ["Armin Ronacher <armin.ronacher@active-4.com>"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
+description = "Utility crate that allows executables to replace or uninstall themselves"
+homepage = "https://github.com/mitsuhiko/self-replace"
 repository = "https://github.com/mitsuhiko/self-replace"
-keywords = ["self-update", "self-replace"]
+keywords = ["self-update", "self-replace", "self-uninstall", "replace", "uninstall"]
 rust-version = "1.61"
+exclude = ["examples", "demo*"]
 
 [dependencies]
 tempfile = "3.5.0"
