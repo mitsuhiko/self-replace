@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "self-replace"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tempfile",
  "windows-sys 0.48.0",
