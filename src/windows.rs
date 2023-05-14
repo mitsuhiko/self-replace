@@ -7,7 +7,7 @@ use std::os::windows::prelude::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::Once;
 use std::thread;
 use std::time::Duration;
 
@@ -26,6 +26,10 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcess, WaitForSingleObject, INFINITE,
 };
 
+extern "C" {
+    fn atexit(cb: unsafe extern "C" fn());
+}
+
 static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 
 /// Utility function that delays the deletion of a file until the process shuts down.
@@ -33,36 +37,45 @@ static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 /// schedules the spawn on that executable at process shutdown.  This special spawn
 /// is picked up by `self_delete_on_init` later.
 fn delete_at_exit(tmp_exe: PathBuf) -> Result<(), io::Error> {
-    static TO_DELETE: Mutex<Option<(PathBuf, HANDLE)>> = Mutex::new(None);
+    static mut HANDLE_AND_EXE: Option<Box<(HANDLE, PathBuf)>> = None;
+    static DELETE_ONCE: Once = Once::new();
 
-    let mut guard = TO_DELETE.lock().unwrap();
-    if guard.is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "cannot delete or replace executable twice",
-        ));
-    }
-
-    let handle = unsafe { prepare_exe_for_deletion(&tmp_exe)? };
-    *guard = Some((tmp_exe, handle));
-
-    extern "C" {
-        fn atexit(cb: unsafe extern "C" fn());
-    }
-
-    unsafe extern "C" fn schedule_delete() {
-        if let Ok(guard) = TO_DELETE.lock() {
-            if let Some((ref file, handle)) = *guard {
-                respawn_to_self_delete(file, handle).ok();
+    unsafe extern "C" fn delete_on_exit() {
+        // Safety: if the once is completed, the handle and exe are set and it's safe
+        // to access the static.
+        if DELETE_ONCE.is_completed() {
+            if let Some(ref tup) = HANDLE_AND_EXE {
+                respawn_to_self_delete(&tup.1, tup.0).ok();
             }
         }
     }
 
-    unsafe {
-        atexit(schedule_delete);
-    }
+    let mut prepare_result = None;
+    DELETE_ONCE.call_once(|| {
+        prepare_result = Some(prepare_exe_for_deletion(&tmp_exe));
+        if let Some(Ok(handle)) = prepare_result {
+            unsafe {
+                HANDLE_AND_EXE = Some(Box::new((handle, tmp_exe)));
+            }
+        }
+    });
 
-    Ok(())
+    // if we get a `prepare_result` back it means that our Once just initialized.
+    // In that case if it's a failure, we abort here, otherwise we register an
+    // atexit handler.
+    match prepare_result {
+        Some(Ok(_)) => {
+            unsafe {
+                atexit(delete_on_exit);
+            }
+            Ok(())
+        }
+        Some(Err(err)) => Err(err),
+        None => Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "cannot delete or replace executable twice",
+        )),
+    }
 }
 
 /// This allows us to register a function that self destroys the process on startup
@@ -79,7 +92,7 @@ static INIT_TABLE_ENTRY: unsafe extern "C" fn() = self_delete_on_init;
 /// The logic of this is heavily inspired by the implementation of rustup which itself
 /// is modelled after a blog post that no longer exists.  However a copy pasted version
 /// of it can be found here: https://0x00sec.org/t/self-deleting-executables/33702
-unsafe extern "C" fn self_delete_on_init() {
+extern "C" fn self_delete_on_init() {
     if let Ok(module) = env::current_exe() {
         if module
             .file_name()
@@ -117,7 +130,7 @@ unsafe extern "C" fn self_delete_on_init() {
 }
 
 /// Opens the given exec as `DELETE_ON_CLOSE` and returns the handle.
-unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
+fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
     let tmp_exe_win: Vec<_> = tmp_exe.as_os_str().encode_wide().chain(Some(0)).collect();
     let sa = SECURITY_ATTRIBUTES {
         nLength: mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -125,15 +138,17 @@ unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> 
         bInheritHandle: 1,
     };
 
-    let tmp_handle = CreateFileW(
-        tmp_exe_win.as_ptr(),
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_DELETE,
-        &sa,
-        OPEN_EXISTING,
-        FILE_FLAG_DELETE_ON_CLOSE,
-        0,
-    );
+    let tmp_handle = unsafe {
+        CreateFileW(
+            tmp_exe_win.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            &sa,
+            OPEN_EXISTING,
+            FILE_FLAG_DELETE_ON_CLOSE,
+            0,
+        )
+    };
 
     if tmp_handle == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
@@ -144,6 +159,10 @@ unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> 
 /// Utility function that is executed at shutdown to spawn the given executable
 /// which is the copy of the original executable.  Then it gives it 100 milliseconds
 /// to shut down, which apparently is needed for this logic to work.
+///
+/// # Safety
+///
+/// The `tmp_handle` needs to be valid.
 unsafe fn respawn_to_self_delete(tmp_exe: &Path, tmp_handle: HANDLE) -> Result<(), io::Error> {
     Command::new(tmp_exe).spawn().ok();
     thread::sleep(Duration::from_millis(100));
@@ -154,39 +173,41 @@ unsafe fn respawn_to_self_delete(tmp_exe: &Path, tmp_handle: HANDLE) -> Result<(
 /// This waits until the parent shut down.
 ///
 /// This is sadly a bit racy.
-unsafe fn wait_for_parent_shutdown() -> Result<(), io::Error> {
-    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if snapshot == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
-    }
+fn wait_for_parent_shutdown() -> Result<(), io::Error> {
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
 
-    let mut entry: PROCESSENTRY32 = mem::zeroed();
-    entry.dwSize = mem::size_of::<PROCESSENTRY32>() as _;
+        let mut entry: PROCESSENTRY32 = mem::zeroed();
+        entry.dwSize = mem::size_of::<PROCESSENTRY32>() as _;
 
-    if Process32First(snapshot, &mut entry) == 0 {
-        CloseHandle(snapshot);
-        return Err(io::Error::last_os_error());
-    }
-
-    while entry.th32ProcessID != GetCurrentProcessId() {
-        if Process32Next(snapshot, &mut entry) == 0 {
+        if Process32First(snapshot, &mut entry) == 0 {
             CloseHandle(snapshot);
             return Err(io::Error::last_os_error());
         }
-    }
 
-    let parent = OpenProcess(SYNCHRONIZE, 0, entry.th32ParentProcessID);
-    if parent == 0 {
+        while entry.th32ProcessID != GetCurrentProcessId() {
+            if Process32Next(snapshot, &mut entry) == 0 {
+                CloseHandle(snapshot);
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        let parent = OpenProcess(SYNCHRONIZE, 0, entry.th32ParentProcessID);
+        if parent == 0 {
+            CloseHandle(snapshot);
+            return Ok(());
+        }
+
+        let rv = WaitForSingleObject(parent, INFINITE);
         CloseHandle(snapshot);
-        return Ok(());
-    }
-
-    let rv = WaitForSingleObject(parent, INFINITE);
-    CloseHandle(snapshot);
-    if rv != WAIT_OBJECT_0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
+        if rv != WAIT_OBJECT_0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
     }
 }
 
