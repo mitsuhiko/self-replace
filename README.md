@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/d/self-replace.svg)](https://crates.io/crates/self-replace)
 [![License](https://img.shields.io/github/license/mitsuhiko/self-replace)](https://github.com/mitsuhiko/self-replace/blob/main/LICENSE)
 [![rustc 1.61.0](https://img.shields.io/badge/rust-1.61%2B-orange.svg)](https://img.shields.io/badge/rust-1.61%2B-orange.svg)
-[![Documentation](https://docs.rs/similar/badge.svg)](https://docs.rs/similar)
+[![Documentation](https://docs.rs/self-replace/badge.svg)](https://docs.rs/self-replace)
 
 `self-replace` is a crate that allows binaries to replace themselves with newer
 versions or to uninstall themselves.  On Unix systems this is a simple feat, but
