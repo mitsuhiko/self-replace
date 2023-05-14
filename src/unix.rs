@@ -12,6 +12,7 @@ pub fn self_delete() -> Result<(), io::Error> {
 
 pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let exe = env::current_exe()?;
+    let old_permissions = exe.metadata()?.permissions();
 
     let tmp = tempfile::Builder::new()
         .prefix("._tempexeswap")
@@ -22,18 +23,17 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
             )
         })?)?;
     fs::copy(&new_executable, tmp.path())?;
+    fs::set_permissions(&tmp.path(), old_permissions)?;
 
     // if we made it this far, try to persist the temporary file and move it over.
     let (_, path) = tmp.keep()?;
-    match fs::rename(&path, &new_executable) {
+    match fs::rename(&path, &exe) {
         Ok(()) => {}
         Err(err) => {
             fs::remove_file(&path).ok();
             return Err(err);
         }
     }
-
-    // TODO: copy old mode and permissions to the new file.
 
     Ok(())
 }
