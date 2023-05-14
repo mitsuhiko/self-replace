@@ -6,6 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 repository = "https://github.com/mitsuhiko/self-replace"
 keywords = ["self-update", "self-replace"]
+rust-version = "1.61"
 
 [dependencies]
 tempfile = "3.5.0"
