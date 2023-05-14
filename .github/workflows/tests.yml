@@ -31,9 +31,21 @@ jobs:
       - name: Demo
         run: ./demo.bat
 
-  test-stable:
+  test-stable-linux:
     name: Build on 1.48.0
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.48.0
+      - name: Check
+        run: make check
+
+  test-stable-windows:
+    name: Build on 1.48.0
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v3
