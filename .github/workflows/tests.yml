@@ -32,7 +32,7 @@ jobs:
         run: ./demo.bat
 
   test-stable-linux:
-    name: Build on 1.48.0
+    name: Build on 1.48.0 Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -44,7 +44,7 @@ jobs:
         run: make check
 
   test-stable-windows:
-    name: Build on 1.48.0
+    name: Build on 1.48.0 Windows
     runs-on: windows-latest
 
     steps:
