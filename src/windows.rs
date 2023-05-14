@@ -75,6 +75,10 @@ static INIT_TABLE_ENTRY: unsafe extern "C" fn() = self_delete_on_init;
 /// This is violates some important Rust rules, primarily that there is no life before
 /// main, but for our purposes that's good enough.  To make this work better we should
 /// probably only use winapi functions directly here.
+///
+/// The logic of this is heavily inspired by the implementation of rustup which itself
+/// is modelled after a blog post that no longer exists.  However a copy pasted version
+/// of it can be found here: https://0x00sec.org/t/self-deleting-executables/33702
 unsafe extern "C" fn self_delete_on_init() {
     if let Ok(module) = env::current_exe() {
         if module
@@ -97,8 +101,9 @@ unsafe extern "C" fn self_delete_on_init() {
 
             if !failed {
                 // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
-                // spawn the built-in "net" executable that just exits quickly with a message.
-                Command::new("net")
+                // spawn the built-in "rundll32" executable that just exits quickly if spawned
+                // without arguments.  And it should always exist.
+                Command::new("rundll32")
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
