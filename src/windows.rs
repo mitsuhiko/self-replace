@@ -114,7 +114,7 @@ unsafe extern "C" fn self_delete_on_init() {
 /// Opens the given exec as `DELETE_ON_CLOSE` and returns the handle.
 unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
     let tmp_exe_win: Vec<_> = tmp_exe.as_os_str().encode_wide().chain(Some(0)).collect();
-    let mut sa = SECURITY_ATTRIBUTES {
+    let sa = SECURITY_ATTRIBUTES {
         nLength: mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: ptr::null_mut(),
         bInheritHandle: 1,
@@ -124,7 +124,7 @@ unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> 
         tmp_exe_win.as_ptr(),
         GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_DELETE,
-        &mut sa,
+        &sa,
         OPEN_EXISTING,
         FILE_FLAG_DELETE_ON_CLOSE,
         0,
@@ -140,7 +140,7 @@ unsafe fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> 
 /// which is the copy of the original executable.  Then it gives it 100 milliseconds
 /// to shut down, which apparently is needed for this logic to work.
 unsafe fn respawn_to_self_delete(tmp_exe: &Path, tmp_handle: HANDLE) -> Result<(), io::Error> {
-    Command::new(&tmp_exe).spawn().ok();
+    Command::new(tmp_exe).spawn().ok();
     thread::sleep(Duration::from_millis(100));
     CloseHandle(tmp_handle);
     Ok(())
@@ -190,8 +190,8 @@ unsafe fn wait_for_parent_shutdown() -> Result<(), io::Error> {
 /// The executable to be deleted has to be valid and have the necessary
 /// code in it to perform self deletion.
 fn schedule_self_deletion_on_shutdown(exe: &Path) -> Result<(), io::Error> {
-    let tmp_exe = get_temp_executable_name(&exe, SELFDELETE_SUFFIX);
-    fs::copy(&exe, &tmp_exe)?;
+    let tmp_exe = get_temp_executable_name(exe, SELFDELETE_SUFFIX);
+    fs::copy(exe, &tmp_exe)?;
     delete_at_exit(tmp_exe)?;
     Ok(())
 }
@@ -231,6 +231,6 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let old_exe = get_temp_executable_name(&exe, ".__old__.exe");
     fs::rename(&exe, &old_exe)?;
     schedule_self_deletion_on_shutdown(&old_exe)?;
-    fs::copy(&new_executable, &exe)?;
+    fs::copy(new_executable, &exe)?;
     Ok(())
 }
