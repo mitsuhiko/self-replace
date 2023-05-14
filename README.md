@@ -14,7 +14,6 @@ This is a useful operation when working with single-executable utilties that wan
 ## Uninstallation
 
 ```rust
-// uninstall
 self_replace::self_delete()?;
 ```
 
@@ -24,7 +23,7 @@ self_replace::self_delete()?;
 use std::fs;
 
 let new_binary = "/path/to/new/binary";
-self_replace::self_delete(&new_binary)?;
+self_replace::self_replace(&new_binary)?;
 fs::remove_file(&new_binary)?;
 ```
 
