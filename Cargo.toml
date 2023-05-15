@@ -11,7 +11,20 @@ keywords = ["self-update", "self-replace", "self-uninstall", "replace", "uninsta
 rust-version = "1.48"
 exclude = ["examples", "demo*"]
 
+[features]
+sudo = ["permissions", "runas"]
+
+[[example]]
+name = "sudo-deletes-itself"
+required-features = ["sudo"]
+
+[[example]]
+name = "sudo-replaces-itself"
+required-features = ["sudo"]
+
 [dependencies]
+permissions = { version = "0.4.1", optional = true }
+runas = { version = "1.1.0", optional = true }
 tempfile = "3.5.0"
 
 [target."cfg(windows)".dependencies]

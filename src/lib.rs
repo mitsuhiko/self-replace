@@ -41,6 +41,12 @@ mod unix;
 #[cfg(windows)]
 mod windows;
 
+// the implementation to use
+#[cfg(unix)]
+use crate::unix as imp;
+#[cfg(windows)]
+use crate::windows as imp;
+
 /// Deletes the executable in a platform independent manner.
 ///
 /// The deletion on windows is delayed until the process shuts down.  For updating
@@ -53,14 +59,7 @@ mod windows;
 /// # Ok(()) }
 /// ```
 pub fn self_delete() -> Result<(), io::Error> {
-    #[cfg(unix)]
-    {
-        crate::unix::self_delete()
-    }
-    #[cfg(windows)]
-    {
-        crate::windows::self_delete()
-    }
+    imp::self_delete()
 }
 
 /// Replaces the running executable with a differnet one.
@@ -85,12 +84,51 @@ pub fn self_delete() -> Result<(), io::Error> {
 ///
 /// By default the permissions of the original file are restored.
 pub fn self_replace<P: AsRef<Path>>(new_executable: P) -> Result<(), io::Error> {
-    #[cfg(unix)]
-    {
-        crate::unix::self_replace(new_executable.as_ref())
-    }
-    #[cfg(windows)]
-    {
-        crate::windows::self_replace(new_executable.as_ref())
-    }
+    imp::self_replace(new_executable.as_ref())
+}
+
+/// Sudo version of [`self_delete`].
+///
+/// This works exactly like [`self_delete`] but it requests sudo
+/// permissions first.  The `gui` flag controls the type of sudo
+/// prompt that should be shown.
+///
+/// To only sudo when necessary, [`has_delete_permissions`] can be
+/// used beforehand.
+#[cfg(feature = "sudo")]
+pub fn sudo_self_delete(gui: bool) -> Result<(), io::Error> {
+    imp::sudo_self_delete(gui)
+}
+
+/// Sudo version of [`self_replace`].
+///
+/// This works exactly like [`self_replace`] but it requests sudo
+/// permissions first.  The `gui` flag controls the type of sudo
+/// prompt that should be shown.
+///
+/// To only sudo when necessary, [`has_delete_permissions`] can be
+/// used beforehand.
+#[cfg(feature = "sudo")]
+pub fn sudo_self_replace<P: AsRef<Path>>(new_executable: P, gui: bool) -> Result<(), io::Error> {
+    imp::sudo_self_replace(new_executable.as_ref(), gui)
+}
+
+/// Checks if the current user has permissions to delete the executable.
+#[cfg(feature = "sudo")]
+pub fn has_delete_permissions() -> Result<bool, io::Error> {
+    let exe = std::env::current_exe()?;
+    permissions::is_removable(exe)
+}
+
+/// Checks if the current user has permissions to replace the executable.
+#[cfg(feature = "sudo")]
+pub fn has_replace_permissions() -> Result<bool, io::Error> {
+    let exe = std::env::current_exe()?;
+    let parent = match exe.parent() {
+        Some(parent) => parent,
+        None => return Ok(false),
+    };
+    Ok(permissions::is_removable(&exe)?
+        && permissions::is_creatable(parent)?
+        && permissions::is_creatable(&exe)?)
 }
