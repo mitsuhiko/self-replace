@@ -10,7 +10,10 @@
 versions or to uninstall themselves.  On Unix systems this is a simple feat, but
 on Windows a few hacks are needed which is why this crate exists.
 
-This is a useful operation when working with single-executable utilties that want to implement a form of self updating or self uninstallation.
+This is a useful operation when working with single-executable utilties that
+want to implement a form of self updating or self uninstallation.
+
+For details about the implementation refer to the [documentation](https://docs.rs/self-replace).
 
 ## Uninstall
 

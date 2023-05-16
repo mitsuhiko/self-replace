@@ -33,6 +33,31 @@
 //! fs::remove_file(&new_binary)?;
 //! # Ok(()) }
 //! ```
+//!
+//! ## Implementation
+//!
+//! The way this is implemented depends on the operating system.  On UNIX systems you
+//! can usually not directly write into an executable, but you can swap it out which is
+//! exactly what this is doing.  For deleting, the file is just unlinked, for replacing
+//! a new file is placed right next to the current executable and an atomic move with
+//! `rename` is performed.
+//!
+//! On Windows the situation is trickier because when an executable launches it can be
+//! renamed, but it cannot be unlinked.  This means that we cannot clean up after
+//! ourselves easily.  In either case, we first move our executable aside so the name
+//! on the file system is made available for the new executable.  Then for both
+//! deleting and replacing, we create a copy of our own executable first.  After this we
+//! open that copied executable with `FILE_FLAG_DELETE_ON_CLOSE` and schedule it to
+//! be spawned when we shut down.  Just before we shut down this copy is then spawned.
+//! This library contains a special glue code that detects this copy of the executable
+//! and does nothing else but waiting for the parent to quit and to then delete the
+//! parent executable.  There is an extra hack in there in that it spawns another system
+//! executable that stays alive until after we shut down (in our case `ping`) to make
+//! the self deletion of the copy work.  This is necessary because our running executable
+//! must not be the last user of that file handle as otherwise the deletion
+//! won't work as the executable still cannot be deleted.  Presumably this is
+//! because `CreateProcess` and friends do not open the executable with
+//! `FILE_FLAG_DELETE_ON_CLOSE`.
 use std::io;
 use std::path::Path;
 
