@@ -63,7 +63,7 @@ pub fn self_delete() -> Result<(), io::Error> {
     }
 }
 
-/// Replaces the running executable with a differnet one.
+/// Replaces the running executable with a different one.
 ///
 /// This replaces the binary with another binary.  The provided path is copied over and
 /// if the function successfully completes, you can delete the source binary.
