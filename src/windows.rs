@@ -114,9 +114,13 @@ extern "C" fn self_delete_on_init() {
 
             if !failed {
                 // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
-                // spawn the built-in "rundll32" executable that just exits quickly if spawned
-                // without arguments.  And it should always exist.
-                Command::new("rundll32")
+                // spawn the built-in "ping" executable and make it ping for a second.  That
+                // gives us enough time for our handle to stay alive until after the operating
+                // system has shut us down.
+                Command::new("ping")
+                    .arg("127.0.0.1")
+                    .arg("-n")
+                    .arg("1")
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
