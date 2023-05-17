@@ -271,7 +271,7 @@ fn get_temp_executable_name(base: &Path, suffix: &str) -> PathBuf {
         file_name.push(rng.lowercase());
     }
     file_name.push_str(suffix);
-    base.with_file_name(file_name)
+    base.join(file_name)
 }
 
 fn get_directory_of(p: &Path) -> Result<&Path, io::Error> {
