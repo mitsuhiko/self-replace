@@ -16,3 +16,11 @@ echo "Run replaces-itself"
 target/debug/examples/replaces-itself
 echo "Run replaces-itself"
 target/debug/examples/replaces-itself
+
+echo
+echo "Run deletes-itself-outside-path"
+target/debug/examples/deletes-itself-outside-path
+
+if [ ! -d target/debug/examples ]; then
+  echo "  built exampels were successfully deleted"
+fi

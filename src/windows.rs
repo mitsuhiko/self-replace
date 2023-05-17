@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::mem;
@@ -31,21 +31,22 @@ extern "C" {
 }
 
 static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
+static RELOCATED_SUFFIX: &str = ".__relocated__.exe";
 
 /// Utility function that delays the deletion of a file until the process shuts down.
 /// The way this works is that it marks the given executable as DELETE_ON_CLOSE, and
 /// schedules the spawn on that executable at process shutdown.  This special spawn
 /// is picked up by `self_delete_on_init` later.
-fn delete_at_exit(tmp_exe: PathBuf) -> Result<(), io::Error> {
-    static mut HANDLE_AND_EXE: Option<Box<(HANDLE, PathBuf)>> = None;
+fn delete_at_exit(tmp_exe: PathBuf, original_exe: PathBuf) -> Result<(), io::Error> {
+    static mut HANDLE_AND_EXES: Option<Box<(HANDLE, PathBuf, PathBuf)>> = None;
     static DELETE_ONCE: Once = Once::new();
 
     unsafe extern "C" fn delete_on_exit() {
         // Safety: if the once is completed, the handle and exe are set and it's safe
         // to access the static.
         if DELETE_ONCE.is_completed() {
-            if let Some(ref tup) = HANDLE_AND_EXE {
-                respawn_to_self_delete(&tup.1, tup.0).ok();
+            if let Some(ref tup) = HANDLE_AND_EXES {
+                respawn_to_self_delete(&tup.1, &tup.2, tup.0).ok();
             }
         }
     }
@@ -55,7 +56,7 @@ fn delete_at_exit(tmp_exe: PathBuf) -> Result<(), io::Error> {
         prepare_result = Some(prepare_exe_for_deletion(&tmp_exe));
         if let Some(Ok(handle)) = prepare_result {
             unsafe {
-                HANDLE_AND_EXE = Some(Box::new((handle, tmp_exe)));
+                HANDLE_AND_EXES = Some(Box::new((handle, tmp_exe, original_exe)));
             }
         }
     });
@@ -99,11 +100,10 @@ extern "C" fn self_delete_on_init() {
             .and_then(|x| x.to_str())
             .map_or(false, |x| x.ends_with(SELFDELETE_SUFFIX))
         {
-            let tmp_filename = module.file_name().unwrap();
-            let real_filename = tmp_filename
+            let real_filename = std::env::args_os()
+                .nth(1)
+                .unwrap()
                 .encode_wide()
-                .skip(1)
-                .take(tmp_filename.len() - (SELFDELETE_SUFFIX.len() + 1))
                 .collect::<Vec<_>>();
 
             // This is abit odd.  These can fail, but because we are running in an atexit
@@ -167,8 +167,12 @@ fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
 /// # Safety
 ///
 /// The `tmp_handle` needs to be valid.
-unsafe fn respawn_to_self_delete(tmp_exe: &Path, tmp_handle: HANDLE) -> Result<(), io::Error> {
-    Command::new(tmp_exe).spawn().ok();
+unsafe fn respawn_to_self_delete(
+    tmp_exe: &Path,
+    original_exe: &Path,
+    tmp_handle: HANDLE,
+) -> Result<(), io::Error> {
+    Command::new(tmp_exe).arg(original_exe).spawn().ok();
     thread::sleep(Duration::from_millis(100));
     CloseHandle(tmp_handle);
     Ok(())
@@ -219,21 +223,60 @@ fn wait_for_parent_shutdown() -> Result<(), io::Error> {
 ///
 /// The executable to be deleted has to be valid and have the necessary
 /// code in it to perform self deletion.
-fn schedule_self_deletion_on_shutdown(exe: &Path) -> Result<(), io::Error> {
-    let tmp_exe = get_temp_executable_name(exe, SELFDELETE_SUFFIX);
-    fs::copy(exe, &tmp_exe)?;
-    delete_at_exit(tmp_exe)?;
-    Ok(())
+fn schedule_self_deletion_on_shutdown(
+    exe: &Path,
+    protected_path: Option<&Path>,
+) -> Result<(), io::Error> {
+    match protected_path {
+        None => {
+            let tmp_exe = get_temp_executable_name(get_directory_of(exe)?, SELFDELETE_SUFFIX);
+            fs::copy(exe, &tmp_exe)?;
+            delete_at_exit(tmp_exe, exe.to_path_buf())?;
+            Ok(())
+        }
+        Some(protected_path) => {
+            // The idea is that at first we try to place our file in the shared temporary directory.
+            // This only works if the directory is actually on the same volume as otherwise the
+            // MoveFileEx behind fs::rename will fail.  If we fail, we just use the parent folder
+            // of the protected path.
+            let first_choice = env::temp_dir();
+            let relocated_exe = get_temp_executable_name(&first_choice, RELOCATED_SUFFIX);
+            if fs::rename(&first_choice, &relocated_exe).is_ok() {
+                let tmp_exe = get_temp_executable_name(&first_choice, SELFDELETE_SUFFIX);
+                fs::copy(&relocated_exe, &tmp_exe)?;
+                delete_at_exit(tmp_exe, relocated_exe)?;
+            } else {
+                let path = protected_path.parent().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "protected path has no parent")
+                })?;
+
+                let tmp_exe = get_temp_executable_name(path, SELFDELETE_SUFFIX);
+                let relocated_exe = get_temp_executable_name(path, RELOCATED_SUFFIX);
+                fs::copy(exe, &tmp_exe)?;
+                fs::rename(exe, &relocated_exe)?;
+                delete_at_exit(tmp_exe, relocated_exe)?;
+            }
+            Ok(())
+        }
+    }
 }
 
-/// Takes an already existing path but prepends a `.` to the filename and
-/// adds a new suffix to it.
-fn get_temp_executable_name(exe: &Path, suffix: &str) -> PathBuf {
-    let mut file_name = OsString::new();
-    file_name.push(OsStr::new("."));
-    file_name.push(exe.file_name().unwrap());
-    file_name.push(OsStr::new(suffix));
-    exe.with_file_name(file_name)
+// This creates a temporary executable wiht a random name in the given directory and
+// the provided suffix.
+fn get_temp_executable_name(base: &Path, suffix: &str) -> PathBuf {
+    let rng = fastrand::Rng::new();
+    let mut file_name = String::new();
+    file_name.push('.');
+    for _ in 0..20 {
+        file_name.push(rng.lowercase());
+    }
+    file_name.push_str(suffix);
+    base.with_file_name(file_name)
+}
+
+fn get_directory_of(p: &Path) -> Result<&Path, io::Error> {
+    p.parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no parent"))
 }
 
 /// The logic here is a bit like the following:
@@ -248,9 +291,9 @@ fn get_temp_executable_name(exe: &Path, suffix: &str) -> PathBuf {
 ///    actually shuts down.
 /// 4. In `self_delete_on_init` spawn a dummy process so that windows deletes the
 ///    copy too.
-pub fn self_delete() -> Result<(), io::Error> {
+pub fn self_delete(protected_path: Option<&Path>) -> Result<(), io::Error> {
     let exe = env::current_exe()?.canonicalize()?;
-    schedule_self_deletion_on_shutdown(&exe)?;
+    schedule_self_deletion_on_shutdown(&exe, protected_path)?;
     Ok(())
 }
 
@@ -258,9 +301,9 @@ pub fn self_delete() -> Result<(), io::Error> {
 /// location so that the executable can be updated by the given other one.
 pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let exe = env::current_exe()?.canonicalize()?;
-    let old_exe = get_temp_executable_name(&exe, ".__old__.exe");
+    let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
     fs::rename(&exe, &old_exe)?;
-    schedule_self_deletion_on_shutdown(&old_exe)?;
+    schedule_self_deletion_on_shutdown(&old_exe, None)?;
     fs::copy(new_executable, &exe)?;
     Ok(())
 }

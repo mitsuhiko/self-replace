@@ -115,6 +115,7 @@ dependencies = [
 name = "self-replace"
 version = "1.2.0"
 dependencies = [
+ "fastrand",
  "tempfile",
  "windows-sys 0.48.0",
 ]

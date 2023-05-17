@@ -16,3 +16,10 @@ echo Run replaces-itself.exe
 target\debug\examples\replaces-itself.exe
 echo Run replaces-itself.exe
 target\debug\examples\replaces-itself.exe
+
+echo.
+echo Run deletes-itself-outside-path.exe
+target\debug\examples\deletes-itself-outside-path.exe
+if not exist target\debug\examples\NUL (
+    echo   built examples were successfully deleted
+)

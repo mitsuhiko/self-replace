@@ -19,6 +19,21 @@
 //! # Ok(()) }
 //! ```
 //!
+//! On Windows self deletion requires some place in the folder the deletion is taking
+//! place.  This will prevent the abiltiy of the program to also delete the folder the
+//! executable is placed in.  To avoid this you can use the [`self_delete_outside_path`]
+//! function which will ensure that the deletion does not take place in the path
+//! provided if it's possible to do so.  That way you can delete entire structures safely.
+//!
+//! ```
+//! # fn foo() -> Result<(), std::io::Error> {
+//! let itself = std::env::current_exe().unwrap();
+//! let parent = itself.parent().unwrap();
+//! self_replace::self_delete_outside_path(&parent)?;
+//! fs::remove_dir_all(&parent);
+//! # Ok(()) }
+//! ```
+//!
 //! ## Self Replacing
 //!
 //! This replaces the binary with another binary.  The provided path is copied over and
@@ -84,7 +99,24 @@ pub fn self_delete() -> Result<(), io::Error> {
     }
     #[cfg(windows)]
     {
-        crate::windows::self_delete()
+        crate::windows::self_delete(None)
+    }
+}
+
+/// Like [`self_delete`] but accepts a path which must not be used for temporary operations.
+///
+/// This is equivalent to [`self_delete`] on Unix, but it instructs the deletion logic to
+/// not place temporary files in the given path (or any subdirectory of) for the duration
+/// of the deletion operation.  This is necessary to demolish folder more complex folder
+/// structures on Windows.
+pub fn self_delete_outside_path<P: AsRef<Path>>(p: P) -> Result<(), io::Error> {
+    #[cfg(unix)]
+    {
+        crate::unix::self_delete()
+    }
+    #[cfg(windows)]
+    {
+        crate::windows::self_delete(Some(p.as_ref()))
     }
 }
 
