@@ -112,6 +112,7 @@ pub fn self_delete() -> Result<(), io::Error> {
 pub fn self_delete_outside_path<P: AsRef<Path>>(p: P) -> Result<(), io::Error> {
     #[cfg(unix)]
     {
+        let _ = p;
         crate::unix::self_delete()
     }
     #[cfg(windows)]
