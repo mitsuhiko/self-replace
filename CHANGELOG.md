@@ -2,6 +2,11 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.3.1
+
+- Fixes a bug that caused the wrong path to be calculated internally
+  creating an access error in some cases.
+
 ## 1.3.0
 
 - Added support for `self_delete_outside_path` to support more complex
