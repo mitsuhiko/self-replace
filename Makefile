@@ -1,5 +1,5 @@
 .PHONY: all
-all: check
+all: check test
 
 .PHONY: build
 build:
@@ -12,6 +12,10 @@ doc:
 .PHONY: check
 check:
 	@cargo check --all
+
+.PHONY: test
+check:
+	@cargo test --all
 
 .PHONY: format
 format:

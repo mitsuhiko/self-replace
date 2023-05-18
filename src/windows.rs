@@ -248,7 +248,18 @@ fn get_temp_executable_name(base: &Path, suffix: &str) -> PathBuf {
     let rng = fastrand::Rng::new();
     let mut file_name = String::new();
     file_name.push('.');
-    for _ in 0..20 {
+
+    if let Some(hint) = env::current_exe()
+        .ok()
+        .as_ref()
+        .and_then(|x| x.file_stem())
+        .and_then(|x| x.to_str())
+    {
+        file_name.push_str(hint);
+        file_name.push('.');
+    }
+
+    for _ in 0..32 {
         file_name.push(rng.lowercase());
     }
     file_name.push_str(suffix);

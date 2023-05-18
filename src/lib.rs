@@ -78,6 +78,17 @@
 //! **Special note on Windows:** the system will attempt to run the parent deletion logic
 //! if the executable has the suffix `.__selfdelete__.exe`.  This means if you
 //! name your executable `foo.exe.__selfdelete__.exe`, this logic would kick in.
+//!
+//! ## Limitations
+//!
+//! Because files need to be placed temporarily on the file system, there is a chance
+//! that if power is cut in just the wrong moment, some files are left over.  These
+//! files resemble the original names of the executable prefixed with a dot (`.`) and
+//! a random suffix.  The likelihood of this happening should be small.  It's not
+//! recommended to run automatic cleanup on startup as the location of those temporary
+//! files placed is left undefined.  In many cases the temporary files will be placed
+//! in temporary locations and the operating system will take care of the deletion on
+//! restart.
 use std::io;
 use std::path::Path;
 
