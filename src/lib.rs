@@ -74,6 +74,10 @@
 //! won't work as the executable still cannot be deleted.  Presumably this is
 //! because `CreateProcess` and friends do not open the executable with
 //! `FILE_FLAG_DELETE_ON_CLOSE`.
+//!
+//! **Special note on Windows:** the system will attempt to run the parent deletion logic
+//! if the executable has the suffix `.__selfdelete__.exe`.  This means if you
+//! name your executable `foo.exe.__selfdelete__.exe`, this logic would kick in.
 use std::io;
 use std::path::Path;
 
