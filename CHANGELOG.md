@@ -6,6 +6,8 @@ All notable changes to `self-replace` are documented here.
 
 - Use an atomic rename on Windows in the self replacement case for the
   final step to avoid accidentally leaving partial executables behind.
+- Resolved an issue where a potentially incorrect filename was computed
+  on Windows in some cases.
 
 ## 1.3.1
 

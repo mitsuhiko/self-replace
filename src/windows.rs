@@ -1,9 +1,8 @@
 use std::env;
-use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::mem;
-use std::os::windows::prelude::{OsStrExt, OsStringExt};
+use std::os::windows::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 use std::ptr;
@@ -101,17 +100,11 @@ extern "C" fn self_delete_on_init() {
             .and_then(|x| x.to_str())
             .map_or(false, |x| x.ends_with(SELFDELETE_SUFFIX))
         {
-            let real_filename = std::env::args_os()
-                .nth(1)
-                .unwrap()
-                .encode_wide()
-                .collect::<Vec<_>>();
+            let real_filename = std::env::args_os().nth(1).unwrap();
 
             // This is abit odd.  These can fail, but because we are running in an atexit
             // handler there is really nothing we can do any more to report this.
-            let failed = wait_for_parent_shutdown().is_err()
-                || fs::remove_file(module.with_file_name(OsString::from_wide(&real_filename)))
-                    .is_err();
+            let failed = !wait_for_parent_shutdown() || fs::remove_file(real_filename).is_err();
 
             if !failed {
                 // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
@@ -179,14 +172,15 @@ unsafe fn respawn_to_self_delete(
     Ok(())
 }
 
-/// This waits until the parent shut down.
+/// This waits until the parent shut down.  It will return `true` if the parent was
+/// shut down or `false` if an error ocurred.
 ///
 /// This is sadly a bit racy.
-fn wait_for_parent_shutdown() -> Result<(), io::Error> {
+fn wait_for_parent_shutdown() -> bool {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == INVALID_HANDLE_VALUE {
-            return Err(io::Error::last_os_error());
+            return false;
         }
 
         let mut entry: PROCESSENTRY32 = mem::zeroed();
@@ -194,29 +188,25 @@ fn wait_for_parent_shutdown() -> Result<(), io::Error> {
 
         if Process32First(snapshot, &mut entry) == 0 {
             CloseHandle(snapshot);
-            return Err(io::Error::last_os_error());
+            return false;
         }
 
         while entry.th32ProcessID != GetCurrentProcessId() {
             if Process32Next(snapshot, &mut entry) == 0 {
                 CloseHandle(snapshot);
-                return Err(io::Error::last_os_error());
+                return false;
             }
         }
 
         let parent = OpenProcess(SYNCHRONIZE, 0, entry.th32ParentProcessID);
         if parent == 0 {
             CloseHandle(snapshot);
-            return Ok(());
+            return true;
         }
 
         let rv = WaitForSingleObject(parent, INFINITE);
         CloseHandle(snapshot);
-        if rv != WAIT_OBJECT_0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
-        }
+        rv == WAIT_OBJECT_0
     }
 }
 
