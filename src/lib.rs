@@ -26,6 +26,7 @@
 //! provided if it's possible to do so.  That way you can delete entire structures safely.
 //!
 //! ```
+//! # use std::fs;
 //! # fn foo() -> Result<(), std::io::Error> {
 //! let itself = std::env::current_exe().unwrap();
 //! let parent = itself.parent().unwrap();
