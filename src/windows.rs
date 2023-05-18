@@ -218,41 +218,31 @@ fn schedule_self_deletion_on_shutdown(
     exe: &Path,
     protected_path: Option<&Path>,
 ) -> Result<(), io::Error> {
-    match protected_path {
-        None => {
-            let tmp_exe = get_temp_executable_name(get_directory_of(exe)?, SELFDELETE_SUFFIX);
-            fs::copy(exe, &tmp_exe)?;
-            delete_at_exit(tmp_exe, exe.to_path_buf())?;
-            Ok(())
-        }
-        Some(protected_path) => {
-            // The idea is that at first we try to place our file in the shared temporary directory.
-            // This only works if the directory is actually on the same volume as otherwise the
-            // MoveFileEx behind fs::rename will fail.  If we fail, we just use the parent folder
-            // of the protected path.
-            let first_choice = env::temp_dir();
-            let relocated_exe = get_temp_executable_name(&first_choice, RELOCATED_SUFFIX);
-            if fs::rename(&first_choice, &relocated_exe).is_ok() {
-                let tmp_exe = get_temp_executable_name(&first_choice, SELFDELETE_SUFFIX);
-                fs::copy(&relocated_exe, &tmp_exe)?;
-                delete_at_exit(tmp_exe, relocated_exe)?;
-            } else {
-                let path = protected_path.parent().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "protected path has no parent")
-                })?;
+    let first_choice = env::temp_dir();
+    let relocated_exe = get_temp_executable_name(&first_choice, RELOCATED_SUFFIX);
+    if fs::rename(exe, &relocated_exe).is_ok() {
+        let tmp_exe = get_temp_executable_name(&first_choice, SELFDELETE_SUFFIX);
+        fs::copy(&relocated_exe, &tmp_exe)?;
+        delete_at_exit(tmp_exe, relocated_exe)?;
+    } else if let Some(protected_path) = protected_path {
+        let path = protected_path.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "protected path has no parent")
+        })?;
 
-                let tmp_exe = get_temp_executable_name(path, SELFDELETE_SUFFIX);
-                let relocated_exe = get_temp_executable_name(path, RELOCATED_SUFFIX);
-                fs::copy(exe, &tmp_exe)?;
-                fs::rename(exe, &relocated_exe)?;
-                delete_at_exit(tmp_exe, relocated_exe)?;
-            }
-            Ok(())
-        }
+        let tmp_exe = get_temp_executable_name(path, SELFDELETE_SUFFIX);
+        let relocated_exe = get_temp_executable_name(path, RELOCATED_SUFFIX);
+        fs::copy(exe, &tmp_exe)?;
+        fs::rename(exe, &relocated_exe)?;
+        delete_at_exit(tmp_exe, relocated_exe)?;
+    } else {
+        let tmp_exe = get_temp_executable_name(get_directory_of(exe)?, SELFDELETE_SUFFIX);
+        fs::copy(exe, &tmp_exe)?;
+        delete_at_exit(tmp_exe, exe.to_path_buf())?;
     }
+    Ok(())
 }
 
-// This creates a temporary executable wiht a random name in the given directory and
+// This creates a temporary executable with a random name in the given directory and
 // the provided suffix.
 fn get_temp_executable_name(base: &Path, suffix: &str) -> PathBuf {
     let rng = fastrand::Rng::new();

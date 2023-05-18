@@ -8,6 +8,8 @@ All notable changes to `self-replace` are documented here.
   final step to avoid accidentally leaving partial executables behind.
 - Resolved an issue where a potentially incorrect filename was computed
   on Windows in some cases.
+- A temporary folder is now always preferred on windows for the temporary
+  operations if possible.  This code path now also works correctly.
 
 ## 1.3.1
 

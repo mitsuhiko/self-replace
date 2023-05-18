@@ -51,6 +51,18 @@ fn test_self_delete() {
 }
 
 #[test]
+fn test_self_delete_outside_path() {
+    let tempdir = tempfile::tempdir().unwrap();
+    compile_example("deletes-itself-outside-path");
+    let exe = get_executable("deletes-itself-outside-path", tempdir.path());
+    assert!(exe.is_file());
+    assert!(tempdir.path().is_dir());
+    run(&exe, "When I finish, all of my parent folder is gone.");
+    assert!(!exe.is_file());
+    assert!(!tempdir.path().is_dir());
+}
+
+#[test]
 fn test_self_replace() {
     let tempdir = tempfile::tempdir().unwrap();
     compile_example("replaces-itself");
