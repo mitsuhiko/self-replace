@@ -2,7 +2,7 @@
 
 All notable changes to `self-replace` are documented here.
 
-## Unreleased
+## 1.3.2
 
 - Use an atomic rename on Windows in the self replacement case for the
   final step to avoid accidentally leaving partial executables behind.
