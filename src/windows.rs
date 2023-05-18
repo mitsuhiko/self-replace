@@ -32,6 +32,7 @@ extern "C" {
 
 static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 static RELOCATED_SUFFIX: &str = ".__relocated__.exe";
+static TEMP_SUFFIX: &str = ".__temp__.exe";
 
 /// Utility function that delays the deletion of a file until the process shuts down.
 /// The way this works is that it marks the given executable as DELETE_ON_CLOSE, and
@@ -304,6 +305,8 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
     fs::rename(&exe, &old_exe)?;
     schedule_self_deletion_on_shutdown(&old_exe, None)?;
-    fs::copy(new_executable, &exe)?;
+    let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
+    fs::copy(new_executable, &temp_exe)?;
+    fs::rename(&temp_exe, &exe)?;
     Ok(())
 }
