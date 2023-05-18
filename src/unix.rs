@@ -14,8 +14,14 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let exe = env::current_exe()?;
     let old_permissions = exe.metadata()?.permissions();
 
+    let prefix = if let Some(hint) = exe.file_stem().and_then(|x| x.to_str()) {
+        format!(".{}.__temp__", hint)
+    } else {
+        ".__temp__".into()
+    };
+
     let tmp = tempfile::Builder::new()
-        .prefix("._tempexeswap")
+        .prefix(&prefix)
         .tempfile_in(exe.parent().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::Other,
