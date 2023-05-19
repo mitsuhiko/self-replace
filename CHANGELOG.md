@@ -2,6 +2,12 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.3.3
+
+- Avoid the use of `atexit` and spawn immediately.  This has the advantage
+  that even if the process crashes hard, we already have started the cleanup
+  handler.
+
 ## 1.3.2
 
 - Use an atomic rename on Windows in the self replacement case for the

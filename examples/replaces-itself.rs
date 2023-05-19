@@ -13,4 +13,8 @@ fn main() {
 
     println!("Next time I run, I am the hello executable");
     self_replace::self_replace(&new_executable).unwrap();
+
+    if std::env::var("FORCE_EXIT").ok().as_deref() == Some("1") {
+        std::process::exit(0);
+    }
 }

@@ -6,7 +6,6 @@ use std::os::windows::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 use std::ptr;
-use std::sync::Once;
 use std::thread;
 use std::time::Duration;
 
@@ -25,58 +24,22 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcess, WaitForSingleObject, INFINITE,
 };
 
-extern "C" {
-    fn atexit(cb: unsafe extern "C" fn());
-}
-
 static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 static RELOCATED_SUFFIX: &str = ".__relocated__.exe";
 static TEMP_SUFFIX: &str = ".__temp__.exe";
 
-/// Utility function that delays the deletion of a file until the process shuts down.
-/// The way this works is that it marks the given executable as DELETE_ON_CLOSE, and
-/// schedules the spawn on that executable at process shutdown.  This special spawn
-/// is picked up by `self_delete_on_init` later.
-fn delete_at_exit(tmp_exe: PathBuf, original_exe: PathBuf) -> Result<(), io::Error> {
-    static mut HANDLE_AND_EXES: Option<Box<(HANDLE, PathBuf, PathBuf)>> = None;
-    static DELETE_ONCE: Once = Once::new();
-
-    unsafe extern "C" fn delete_on_exit() {
-        // Safety: if the once is completed, the handle and exe are set and it's safe
-        // to access the static.
-        if DELETE_ONCE.is_completed() {
-            if let Some(ref tup) = HANDLE_AND_EXES {
-                respawn_to_self_delete(&tup.1, &tup.2, tup.0).ok();
-            }
-        }
+/// Spawn a the temporary exe an instruct it to delete the original exe.
+/// We give this spawn an extra 100 milliseconds for this logic to work
+/// properly.  The child will then wait until we are shut down so this
+/// temporary exe hangs around until we shut down.
+fn spawn_delete_tmp_exe(tmp_exe: PathBuf, original_exe: PathBuf) -> Result<(), io::Error> {
+    let tmp_handle = prepare_exe_for_deletion(&tmp_exe)?;
+    Command::new(tmp_exe).arg(original_exe).spawn()?;
+    thread::sleep(Duration::from_millis(100));
+    unsafe {
+        CloseHandle(tmp_handle);
     }
-
-    let mut prepare_result = None;
-    DELETE_ONCE.call_once(|| {
-        prepare_result = Some(prepare_exe_for_deletion(&tmp_exe));
-        if let Some(Ok(handle)) = prepare_result {
-            unsafe {
-                HANDLE_AND_EXES = Some(Box::new((handle, tmp_exe, original_exe)));
-            }
-        }
-    });
-
-    // if we get a `prepare_result` back it means that our Once just initialized.
-    // In that case if it's a failure, we abort here, otherwise we register an
-    // atexit handler.
-    match prepare_result {
-        Some(Ok(_)) => {
-            unsafe {
-                atexit(delete_on_exit);
-            }
-            Ok(())
-        }
-        Some(Err(err)) => Err(err),
-        None => Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "cannot delete or replace executable twice",
-        )),
-    }
+    Ok(())
 }
 
 /// This allows us to register a function that self destroys the process on startup
@@ -102,8 +65,8 @@ extern "C" fn self_delete_on_init() {
         {
             let real_filename = std::env::args_os().nth(1).unwrap();
 
-            // This is abit odd.  These can fail, but because we are running in an atexit
-            // handler there is really nothing we can do any more to report this.
+            // This is abit odd.  These can fail, but there is really nothing we acn
+            // do to report it, so might as well not even try.
             let failed = !wait_for_parent_shutdown() || fs::remove_file(real_filename).is_err();
 
             if !failed {
@@ -152,24 +115,6 @@ fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
         return Err(io::Error::last_os_error());
     }
     Ok(tmp_handle)
-}
-
-/// Utility function that is executed at shutdown to spawn the given executable
-/// which is the copy of the original executable.  Then it gives it 100 milliseconds
-/// to shut down, which apparently is needed for this logic to work.
-///
-/// # Safety
-///
-/// The `tmp_handle` needs to be valid.
-unsafe fn respawn_to_self_delete(
-    tmp_exe: &Path,
-    original_exe: &Path,
-    tmp_handle: HANDLE,
-) -> Result<(), io::Error> {
-    Command::new(tmp_exe).arg(original_exe).spawn().ok();
-    thread::sleep(Duration::from_millis(100));
-    CloseHandle(tmp_handle);
-    Ok(())
 }
 
 /// This waits until the parent shut down.  It will return `true` if the parent was
@@ -223,7 +168,7 @@ fn schedule_self_deletion_on_shutdown(
     if fs::rename(exe, &relocated_exe).is_ok() {
         let tmp_exe = get_temp_executable_name(&first_choice, SELFDELETE_SUFFIX);
         fs::copy(&relocated_exe, &tmp_exe)?;
-        delete_at_exit(tmp_exe, relocated_exe)?;
+        spawn_delete_tmp_exe(tmp_exe, relocated_exe)?;
     } else if let Some(protected_path) = protected_path {
         let path = protected_path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "protected path has no parent")
@@ -233,11 +178,11 @@ fn schedule_self_deletion_on_shutdown(
         let relocated_exe = get_temp_executable_name(path, RELOCATED_SUFFIX);
         fs::copy(exe, &tmp_exe)?;
         fs::rename(exe, &relocated_exe)?;
-        delete_at_exit(tmp_exe, relocated_exe)?;
+        spawn_delete_tmp_exe(tmp_exe, relocated_exe)?;
     } else {
         let tmp_exe = get_temp_executable_name(get_directory_of(exe)?, SELFDELETE_SUFFIX);
         fs::copy(exe, &tmp_exe)?;
-        delete_at_exit(tmp_exe, exe.to_path_buf())?;
+        spawn_delete_tmp_exe(tmp_exe, exe.to_path_buf())?;
     }
     Ok(())
 }

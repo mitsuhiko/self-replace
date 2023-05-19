@@ -1,16 +1,19 @@
 use std::env::consts::EXE_EXTENSION;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 use std::{env, fs};
 
 fn compile_example(name: &str) {
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
+    let output = cmd
+        .arg("build")
         .arg("--example")
         .arg(name)
-        .status()
+        .output()
         .unwrap();
+    println!("stdout:\n{}", String::from_utf8_lossy(&output.stdout));
+    println!("stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+    assert!(output.status.success());
 }
 
 fn get_executable(name: &str, tempdir: &Path) -> PathBuf {
@@ -28,54 +31,182 @@ fn get_executable(name: &str, tempdir: &Path) -> PathBuf {
     final_exe
 }
 
-fn run(path: &Path, expected_output: &str) {
-    let output = Command::new(path).output().unwrap();
+struct RunOptions<'a> {
+    path: &'a Path,
+    force_exit: bool,
+    scratchspace: &'a Path,
+    expected_output: &'a str,
+}
+
+fn run(opts: RunOptions) {
+    let mut cmd = Command::new(opts.path);
+    if opts.force_exit {
+        cmd.env("FORCE_EXIT", "1");
+    }
+
+    // env::temp_dir is used on windows to place temporaries in some
+    // cases.  Put it onto our scratchspace so we can assert that it's
+    // left empty behind.
+    #[cfg(windows)]
+    {
+        cmd.env("TMP", opts.scratchspace);
+        cmd.env("TEMP", opts.scratchspace);
+    }
+
+    // does not actually matter today, but maybe it once will
+    #[cfg(unix)]
+    {
+        cmd.env("TMPDIR", opts.scratchspace);
+    }
+
+    let output = cmd.output().unwrap();
     assert!(output.status.success());
     #[cfg(windows)]
     {
         // takes a bit
+        use std::time::Duration;
         std::thread::sleep(Duration::from_millis(200));
     }
     let stdout = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(stdout.trim(), expected_output);
+    assert_eq!(stdout.trim(), opts.expected_output);
 }
 
 #[test]
 fn test_self_delete() {
-    let tempdir = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let scratchspace = tempfile::tempdir().unwrap();
     compile_example("deletes-itself");
-    let exe = get_executable("deletes-itself", tempdir.path());
+    let exe = get_executable("deletes-itself", workspace.path());
     assert!(exe.is_file());
-    run(&exe, "When I finish, I am deleted");
+    run(RunOptions {
+        path: &exe,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "When I finish, I am deleted",
+    });
     assert!(!exe.is_file());
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn test_self_delete_force_exit() {
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    compile_example("deletes-itself");
+    let exe = get_executable("deletes-itself", workspace.path());
+    assert!(exe.is_file());
+    run(RunOptions {
+        path: &exe,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "When I finish, I am deleted",
+    });
+    assert!(!exe.is_file());
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
 }
 
 #[test]
 fn test_self_delete_outside_path() {
-    let tempdir = tempfile::tempdir().unwrap();
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
     compile_example("deletes-itself-outside-path");
-    let exe = get_executable("deletes-itself-outside-path", tempdir.path());
+    let exe = get_executable("deletes-itself-outside-path", workspace.path());
     assert!(exe.is_file());
-    assert!(tempdir.path().is_dir());
-    run(&exe, "When I finish, all of my parent folder is gone.");
+    assert!(workspace.path().is_dir());
+    run(RunOptions {
+        path: &exe,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "When I finish, all of my parent folder is gone.",
+    });
     assert!(!exe.is_file());
-    assert!(!tempdir.path().is_dir());
+    assert!(!workspace.path().is_dir());
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn test_self_delete_outside_path_force_exit() {
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    compile_example("deletes-itself-outside-path");
+    let exe = get_executable("deletes-itself-outside-path", workspace.path());
+    assert!(exe.is_file());
+    assert!(workspace.path().is_dir());
+    run(RunOptions {
+        path: &exe,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "When I finish, all of my parent folder is gone.",
+    });
+    assert!(!exe.is_file());
+    assert!(!workspace.path().is_dir());
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
 }
 
 #[test]
 fn test_self_replace() {
-    let tempdir = tempfile::tempdir().unwrap();
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = scratchspace.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
     compile_example("replaces-itself");
     compile_example("hello");
 
-    let exe = get_executable("replaces-itself", tempdir.path());
-    let hello = get_executable("hello", tempdir.path());
+    let exe = get_executable("replaces-itself", &workspace);
+    let hello = get_executable("hello", &workspace);
 
     assert!(exe.is_file());
     assert!(hello.is_file());
 
-    run(&exe, "Next time I run, I am the hello executable");
+    run(RunOptions {
+        path: &exe,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "Next time I run, I am the hello executable",
+    });
     assert!(exe.is_file());
     assert!(hello.is_file());
-    run(&exe, "Hello World!");
+    run(RunOptions {
+        path: &exe,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "Hello World!",
+    });
+
+    fs::remove_dir_all(&workspace).unwrap();
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn test_self_replace_force_exit() {
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = scratchspace.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
+    compile_example("replaces-itself");
+    compile_example("hello");
+
+    let exe = get_executable("replaces-itself", &workspace);
+    let hello = get_executable("hello", &workspace);
+
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+
+    run(RunOptions {
+        path: &exe,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "Next time I run, I am the hello executable",
+    });
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+    run(RunOptions {
+        path: &exe,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "Hello World!",
+    });
+
+    fs::remove_dir_all(&workspace).unwrap();
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
 }
