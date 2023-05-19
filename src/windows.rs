@@ -4,15 +4,17 @@ use std::io;
 use std::mem;
 use std::os::windows::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::Command;
 use std::ptr;
 use std::thread;
 use std::time::Duration;
 
+use windows_sys::Win32::Foundation::MAX_PATH;
 use windows_sys::Win32::Foundation::{
     CloseHandle, GENERIC_READ, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Storage::FileSystem::DeleteFileW;
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_DELETE_ON_CLOSE, FILE_SHARE_DELETE, FILE_SHARE_READ, OPEN_EXISTING,
     SYNCHRONIZE,
@@ -20,9 +22,18 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
 };
+use windows_sys::Win32::System::Environment::GetCommandLineW;
+use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows_sys::Win32::System::Memory::LocalFree;
+use windows_sys::Win32::System::Threading::CreateProcessA;
+use windows_sys::Win32::System::Threading::ExitProcess;
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+use windows_sys::Win32::System::Threading::PROCESS_INFORMATION;
+use windows_sys::Win32::System::Threading::STARTUPINFOA;
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcess, WaitForSingleObject, INFINITE,
 };
+use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
 
 static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 static RELOCATED_SUFFIX: &str = ".__relocated__.exe";
@@ -49,45 +60,78 @@ fn spawn_delete_tmp_exe(tmp_exe: PathBuf, original_exe: PathBuf) -> Result<(), i
 #[link_section = ".CRT$XCV"]
 static INIT_TABLE_ENTRY: unsafe extern "C" fn() = self_delete_on_init;
 
-/// This is violates some important Rust rules, primarily that there is no life before
-/// main, but for our purposes that's good enough.  To make this work better we should
-/// probably only use winapi functions directly here.
+/// This function is called in "life before main" which is not allowed by Rust rules.
+/// As such this function really should not do any funk rust business, and we instead
+/// only use winapi functions directly here.  The exception to this rule is that we
+/// actually use a slice iterator and `mem::zeroed` which is most likely fine given
+/// that these functions won't allocate anything.
 ///
 /// The logic of this is heavily inspired by the implementation of rustup which itself
 /// is modelled after a blog post that no longer exists.  However a copy pasted version
 /// of it can be found here: https://0x00sec.org/t/self-deleting-executables/33702
-extern "C" fn self_delete_on_init() {
-    if let Ok(module) = env::current_exe() {
-        if module
-            .file_name()
-            .and_then(|x| x.to_str())
-            .map_or(false, |x| x.ends_with(SELFDELETE_SUFFIX))
-        {
-            let real_filename = std::env::args_os().nth(1).unwrap();
-
-            // This is abit odd.  These can fail, but there is really nothing we acn
-            // do to report it, so might as well not even try.
-            let failed = !wait_for_parent_shutdown() || fs::remove_file(real_filename).is_err();
-
-            if !failed {
-                // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
-                // spawn the built-in "ping" executable and make it ping for a second.  That
-                // gives us enough time for our handle to stay alive until after the operating
-                // system has shut us down.
-                Command::new("ping")
-                    .arg("127.0.0.1")
-                    .arg("-n")
-                    .arg("1")
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .ok();
-            }
-
-            exit(if failed { 1 } else { 0 })
-        }
+unsafe extern "C" fn self_delete_on_init() {
+    // Check if our executable ends with SELFDELETE_SUFFIX.  If it does, we enter
+    // deletion mode.  If it does not, this function does nothing and we continue
+    // with regular execution.  Note that we intentionally do not try to support
+    // executable names longer than MAX_PATH here.  This is done because in practice
+    // you would run into much bigger issues for executables with a path that long.
+    // In case anyone ever runs into it, a fix can be considered.  However fixing this
+    // requires allocating an extra buffer on every startup and that seems pointless
+    // for such an uncommon case.
+    let mut exe_path = [0u16; MAX_PATH as _];
+    let exe_path_len = GetModuleFileNameW(0, exe_path.as_mut_ptr(), MAX_PATH);
+    if exe_path_len == 0
+        || exe_path[..exe_path_len as _]
+            .iter()
+            .rev()
+            .take(SELFDELETE_SUFFIX.len())
+            .map(|x| *x as u8)
+            .ne(SELFDELETE_SUFFIX.as_bytes().iter().rev().copied())
+    {
+        return;
     }
+
+    // The file we want to delete, is the first argument to the deletion executable
+    // This is abit odd.  This operation can fail, but there is really nothing we can
+    // do to report it, so might as well not even try.  But from this point onwards
+    // we close the process down and will not try to continue regular execution.
+    let mut argc = 0;
+    let argv = CommandLineToArgvW(GetCommandLineW(), &mut argc);
+    if argv.is_null() {
+        ExitProcess(1);
+    }
+    if argc != 2 {
+        LocalFree(argv as _);
+        ExitProcess(1);
+    }
+    let real_filename = *argv.add(1);
+    let failed = !wait_for_parent_shutdown() || DeleteFileW(real_filename) == 0;
+    LocalFree(argv as _);
+
+    if !failed {
+        // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
+        // spawn the built-in "ping" executable and make it ping once.  That
+        // gives us enough time for our handle to stay alive until after the
+        // operating system has shut us down.
+        let mut pi: PROCESS_INFORMATION = mem::zeroed();
+        let mut si: STARTUPINFOA = mem::zeroed();
+        si.cb = mem::size_of::<STARTUPINFOA>() as _;
+
+        CreateProcessA(
+            ptr::null(),
+            "ping 127.0.0.1 -n 1".as_ptr() as *mut _,
+            ptr::null(),
+            ptr::null(),
+            1,
+            CREATE_NO_WINDOW,
+            ptr::null(),
+            ptr::null(),
+            &si,
+            &mut pi,
+        );
+    }
+
+    ExitProcess(if failed { 1 } else { 0 })
 }
 
 /// Opens the given exec as `DELETE_ON_CLOSE` and returns the handle.
