@@ -9,15 +9,13 @@ use std::ptr;
 use std::thread;
 use std::time::Duration;
 
-use windows_sys::Win32::Foundation::MAX_PATH;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GENERIC_READ, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+    CloseHandle, GENERIC_READ, HANDLE, INVALID_HANDLE_VALUE, MAX_PATH, WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-use windows_sys::Win32::Storage::FileSystem::DeleteFileW;
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_DELETE_ON_CLOSE, FILE_SHARE_DELETE, FILE_SHARE_READ, OPEN_EXISTING,
-    SYNCHRONIZE,
+    CreateFileW, DeleteFileW, FILE_FLAG_DELETE_ON_CLOSE, FILE_SHARE_DELETE, FILE_SHARE_READ,
+    OPEN_EXISTING, SYNCHRONIZE,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
@@ -25,13 +23,9 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
 use windows_sys::Win32::System::Environment::GetCommandLineW;
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows_sys::Win32::System::Memory::LocalFree;
-use windows_sys::Win32::System::Threading::CreateProcessA;
-use windows_sys::Win32::System::Threading::ExitProcess;
-use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
-use windows_sys::Win32::System::Threading::PROCESS_INFORMATION;
-use windows_sys::Win32::System::Threading::STARTUPINFOA;
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcessId, OpenProcess, WaitForSingleObject, INFINITE,
+    CreateProcessA, ExitProcess, GetCurrentProcessId, OpenProcess, WaitForSingleObject,
+    CREATE_NO_WINDOW, INFINITE, PROCESS_INFORMATION, STARTUPINFOA,
 };
 use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
 
