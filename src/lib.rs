@@ -63,8 +63,9 @@
 //! ourselves easily.  In either case, we first move our executable aside so the name
 //! on the file system is made available for the new executable.  Then for both
 //! deleting and replacing, we create a copy of our own executable first.  After this we
-//! open that copied executable with `FILE_FLAG_DELETE_ON_CLOSE` and schedule it to
-//! be spawned when we shut down.  Just before we shut down this copy is then spawned.
+//! open that copied executable with `FILE_FLAG_DELETE_ON_CLOSE`.  Then we spawn it and
+//! wait for our own shut down.
+//!
 //! This library contains a special glue code that detects this copy of the executable
 //! and does nothing else but waiting for the parent to quit and to then delete the
 //! parent executable.  There is an extra hack in there in that it spawns another system
@@ -78,6 +79,28 @@
 //! **Special note on Windows:** the system will attempt to run the parent deletion logic
 //! if the executable has the suffix `.__selfdelete__.exe`.  This means if you
 //! name your executable `foo.exe.__selfdelete__.exe`, this logic would kick in.
+//!
+//! ## Alternatives for Windows
+//!
+//! Various proposals were made and tried for alternative solutions on Windows.  One
+//! quite popular option is to spawn a batch file for the deletion job as a batch file
+//! can self delete.  This could be used for both replace and self deletion, but it
+//! has the disadvantage that this is a very racy and quite dirty approach as the batch
+//! file cannot easily wait for the shutdown of the parent process.
+//!
+//! For just replaces, co-operation between parent and client could be implemented in
+//! simpler terms where first the new executable replaces the old, and then on
+//! startup replaces the new one.  There are two downsides of this approach: the first
+//! is that it requires that the new replacing executable has matching logic for the
+//! cleanup.  The second issue with this approach is that it requires either launching
+//! the new executable or waiting for the executable to launch for natural reasons.
+//! The former might not always be preferrable, the second leaves files lingering
+//! around for an extended period of time.
+//!
+//! The third, and somewhat official solution is to use `MOVEFILE_DELAY_UNTIL_REBOOT`
+//! with `MoveFileEx`.  This causes windows to store an entry in the registry and
+//! will perform the delete / move on restart.  This means that if a restart of the
+//! machine does not happen, no cleanup is performed.
 //!
 //! ## Limitations
 //!
@@ -100,8 +123,9 @@ mod windows;
 /// Deletes the executable in a platform independent manner.
 ///
 /// The deletion on windows is delayed until the process shuts down.  For updating
-/// instead of deleting, use [`self_replace`] instead.  Not that on Windows you can
-/// only call this function once during the execution of the program.
+/// instead of deleting, use [`self_replace`] instead.  Not that you must only
+/// only call this function once during the execution of the program and you should
+/// exist quickly afterwards to make the delete take effect on Windows.
 ///
 /// ```
 /// # fn foo() -> Result<(), std::io::Error> {
