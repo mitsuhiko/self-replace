@@ -9,23 +9,22 @@ use std::ptr;
 use std::thread;
 use std::time::Duration;
 
+use windows_sys::s;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GENERIC_READ, HANDLE, INVALID_HANDLE_VALUE, MAX_PATH, WAIT_OBJECT_0,
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, GENERIC_READ, HANDLE,
+    INVALID_HANDLE_VALUE, MAX_PATH, WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, DeleteFileW, FILE_FLAG_DELETE_ON_CLOSE, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    OPEN_EXISTING, SYNCHRONIZE,
-};
-use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+    OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Environment::GetCommandLineW;
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows_sys::Win32::System::Memory::LocalFree;
 use windows_sys::Win32::System::Threading::{
-    CreateProcessA, ExitProcess, GetCurrentProcessId, OpenProcess, WaitForSingleObject,
-    CREATE_NO_WINDOW, INFINITE, PROCESS_INFORMATION, STARTUPINFOA,
+    CreateProcessA, ExitProcess, GetCurrentProcess, WaitForSingleObject, CREATE_NO_WINDOW,
+    INFINITE, PROCESS_INFORMATION, STARTUPINFOA,
 };
 use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
 
@@ -33,15 +32,72 @@ static SELFDELETE_SUFFIX: &str = ".__selfdelete__.exe";
 static RELOCATED_SUFFIX: &str = ".__relocated__.exe";
 static TEMP_SUFFIX: &str = ".__temp__.exe";
 
+extern "C" {
+    fn _wtoi64(x: *const u16) -> i64;
+}
+
 /// Spawn a the temporary exe an instruct it to delete the original exe.
-/// We give this spawn an extra 100 milliseconds for this logic to work
-/// properly.  The child will then wait until we are shut down so this
-/// temporary exe hangs around until we shut down.
-fn spawn_delete_tmp_exe(tmp_exe: PathBuf, original_exe: PathBuf) -> Result<(), io::Error> {
-    let tmp_handle = prepare_exe_for_deletion(&tmp_exe)?;
-    Command::new(tmp_exe).arg(original_exe).spawn()?;
-    thread::sleep(Duration::from_millis(100));
+/// The child will then wait until we are shut down so this temporary exe
+/// hangs around until we shut down.  We pass that exe the name of the original
+/// file as well as a duplicate of the current process' handles.
+fn spawn_tmp_exe_to_delete_parent(
+    tmp_exe: PathBuf,
+    original_exe: PathBuf,
+) -> Result<(), io::Error> {
+    let tmp_exe_win: Vec<_> = tmp_exe.as_os_str().encode_wide().chain(Some(0)).collect();
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+    };
+
+    let tmp_handle = unsafe {
+        CreateFileW(
+            tmp_exe_win.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            &sa,
+            OPEN_EXISTING,
+            FILE_FLAG_DELETE_ON_CLOSE,
+            0,
+        )
+    };
+    if tmp_handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+
+    // We need to upgrade the pseudo current process handle to the real one for the
+    // temp executable.
+    let mut process_handle = 0;
     unsafe {
+        if DuplicateHandle(
+            GetCurrentProcess(),
+            GetCurrentProcess(),
+            GetCurrentProcess(),
+            &mut process_handle,
+            0,
+            1,
+            DUPLICATE_SAME_ACCESS,
+        ) == 0
+        {
+            CloseHandle(tmp_handle);
+            return Err(io::Error::last_os_error());
+        }
+    };
+
+    Command::new(tmp_exe)
+        .arg(process_handle.to_string())
+        .arg(original_exe)
+        .spawn()?;
+
+    // Many implementations of this sort of logic sleep here.  This one included.  However
+    // it does not appear that the sleep here is actually necessary from my testing so I
+    // would be happy to remvoe it.  The motivation here is that if we close our `tmp_handle`
+    // too quickly, the process might nto have inherited it.
+    thread::sleep(Duration::from_millis(100));
+
+    unsafe {
+        CloseHandle(process_handle);
         CloseHandle(tmp_handle);
     }
     Ok(())
@@ -94,103 +150,43 @@ unsafe extern "C" fn self_delete_on_init() {
     if argv.is_null() {
         ExitProcess(1);
     }
-    if argc != 2 {
+    if argc != 3 {
         LocalFree(argv as _);
         ExitProcess(1);
     }
-    let real_filename = *argv.add(1);
-    let failed = !wait_for_parent_shutdown() || DeleteFileW(real_filename) == 0;
+    let parent_process_handle = _wtoi64(*argv.add(1)) as HANDLE;
+    let real_filename = *argv.add(2);
+    let wait_rv = WaitForSingleObject(parent_process_handle, INFINITE);
+    let failed = wait_rv != WAIT_OBJECT_0 || DeleteFileW(real_filename) == 0;
     LocalFree(argv as _);
 
-    if !failed {
-        // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
-        // spawn the built-in "ping" executable and make it ping once.  That
-        // gives us enough time for our handle to stay alive until after the
-        // operating system has shut us down.
-        let mut pi: PROCESS_INFORMATION = mem::zeroed();
-        let mut si: STARTUPINFOA = mem::zeroed();
-        si.cb = mem::size_of::<STARTUPINFOA>() as _;
-
-        CreateProcessA(
-            ptr::null(),
-            "ping 127.0.0.1 -n 1".as_ptr() as *mut _,
-            ptr::null(),
-            ptr::null(),
-            1,
-            CREATE_NO_WINDOW,
-            ptr::null(),
-            ptr::null(),
-            &si,
-            &mut pi,
-        );
+    if failed {
+        ExitProcess(1);
     }
 
-    ExitProcess(if failed { 1 } else { 0 })
-}
+    // hack to make the system pick up on DELETE_ON_CLOSE.  For that purpose we
+    // spawn a built-in executable.  This just needs to live long enough that
+    // something picks up our inherited handles and we are shut down in
+    // between.  This currently uses cmd.exe which should always be available
+    // and triggers an immediate shutdown.  The `tmp_exe` handle them moves into
+    // that process where it will be finally closed, deleting the file.
+    let mut pi: PROCESS_INFORMATION = mem::zeroed();
+    let mut si: STARTUPINFOA = mem::zeroed();
+    si.cb = mem::size_of::<STARTUPINFOA>() as _;
+    CreateProcessA(
+        ptr::null(),
+        s!("cmd.exe /c exit") as *mut _,
+        ptr::null(),
+        ptr::null(),
+        1,
+        CREATE_NO_WINDOW,
+        ptr::null(),
+        ptr::null(),
+        &si,
+        &mut pi,
+    );
 
-/// Opens the given exec as `DELETE_ON_CLOSE` and returns the handle.
-fn prepare_exe_for_deletion(tmp_exe: &Path) -> Result<HANDLE, io::Error> {
-    let tmp_exe_win: Vec<_> = tmp_exe.as_os_str().encode_wide().chain(Some(0)).collect();
-    let sa = SECURITY_ATTRIBUTES {
-        nLength: mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: ptr::null_mut(),
-        bInheritHandle: 1,
-    };
-
-    let tmp_handle = unsafe {
-        CreateFileW(
-            tmp_exe_win.as_ptr(),
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_DELETE,
-            &sa,
-            OPEN_EXISTING,
-            FILE_FLAG_DELETE_ON_CLOSE,
-            0,
-        )
-    };
-
-    if tmp_handle == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(tmp_handle)
-}
-
-/// This waits until the parent shut down.  It will return `true` if the parent was
-/// shut down or `false` if an error ocurred.
-///
-/// This is sadly a bit racy.
-fn wait_for_parent_shutdown() -> bool {
-    unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == INVALID_HANDLE_VALUE {
-            return false;
-        }
-
-        let mut entry: PROCESSENTRY32 = mem::zeroed();
-        entry.dwSize = mem::size_of::<PROCESSENTRY32>() as _;
-
-        if Process32First(snapshot, &mut entry) == 0 {
-            CloseHandle(snapshot);
-            return false;
-        }
-
-        while entry.th32ProcessID != GetCurrentProcessId() {
-            if Process32Next(snapshot, &mut entry) == 0 {
-                CloseHandle(snapshot);
-                return false;
-            }
-        }
-
-        let parent = OpenProcess(SYNCHRONIZE, 0, entry.th32ParentProcessID);
-        if parent == 0 {
-            CloseHandle(snapshot);
-            return true;
-        }
-
-        let rv = WaitForSingleObject(parent, INFINITE);
-        CloseHandle(snapshot);
-        rv == WAIT_OBJECT_0
-    }
+    ExitProcess(0);
 }
 
 /// Schedules the deleting of the given executable at shutdown.
@@ -206,7 +202,7 @@ fn schedule_self_deletion_on_shutdown(
     if fs::rename(exe, &relocated_exe).is_ok() {
         let tmp_exe = get_temp_executable_name(&first_choice, SELFDELETE_SUFFIX);
         fs::copy(&relocated_exe, &tmp_exe)?;
-        spawn_delete_tmp_exe(tmp_exe, relocated_exe)?;
+        spawn_tmp_exe_to_delete_parent(tmp_exe, relocated_exe)?;
     } else if let Some(protected_path) = protected_path {
         let path = protected_path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "protected path has no parent")
@@ -216,11 +212,11 @@ fn schedule_self_deletion_on_shutdown(
         let relocated_exe = get_temp_executable_name(path, RELOCATED_SUFFIX);
         fs::copy(exe, &tmp_exe)?;
         fs::rename(exe, &relocated_exe)?;
-        spawn_delete_tmp_exe(tmp_exe, relocated_exe)?;
+        spawn_tmp_exe_to_delete_parent(tmp_exe, relocated_exe)?;
     } else {
         let tmp_exe = get_temp_executable_name(get_directory_of(exe)?, SELFDELETE_SUFFIX);
         fs::copy(exe, &tmp_exe)?;
-        spawn_delete_tmp_exe(tmp_exe, exe.to_path_buf())?;
+        spawn_tmp_exe_to_delete_parent(tmp_exe, exe.to_path_buf())?;
     }
     Ok(())
 }

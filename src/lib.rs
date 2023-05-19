@@ -69,12 +69,11 @@
 //! This library contains a special glue code that detects this copy of the executable
 //! and does nothing else but waiting for the parent to quit and to then delete the
 //! parent executable.  There is an extra hack in there in that it spawns another system
-//! executable that stays alive until after we shut down (in our case `ping`) to make
-//! the self deletion of the copy work.  This is necessary because our running executable
-//! must not be the last user of that file handle as otherwise the deletion
-//! won't work as the executable still cannot be deleted.  Presumably this is
-//! because `CreateProcess` and friends do not open the executable with
-//! `FILE_FLAG_DELETE_ON_CLOSE`.
+//! executable that stays alive until after we shut down to make the self deletion of
+//! the copy work.  This is necessary because our running executable must not be the
+//! last user of that file handle as otherwise the deletion won't work as the
+//! executable still cannot be deleted.  Presumably this is because `CreateProcess`
+//! and friends do not open the executable with `FILE_FLAG_DELETE_ON_CLOSE`.
 //!
 //! **Special note on Windows:** the system will attempt to run the parent deletion logic
 //! if the executable has the suffix `.__selfdelete__.exe`.  This means if you
@@ -100,7 +99,8 @@
 //! The third, and somewhat official solution is to use `MOVEFILE_DELAY_UNTIL_REBOOT`
 //! with `MoveFileEx`.  This causes windows to store an entry in the registry and
 //! will perform the delete / move on restart.  This means that if a restart of the
-//! machine does not happen, no cleanup is performed.
+//! machine does not happen, no cleanup is performed.  It also is a privileged
+//! operation that is not available to all user accounts.
 //!
 //! ## Limitations
 //!
