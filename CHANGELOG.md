@@ -2,6 +2,11 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.3.4
+
+- Explicitly pass the process handle on Windows simplifying the implementation.
+- Change the dummy command to use on windows away from `ping.exe` to `cmd.exe`.
+
 ## 1.3.3
 
 - Avoid the use of `atexit` and spawn immediately.  This has the advantage
