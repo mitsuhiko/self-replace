@@ -7,6 +7,7 @@ All notable changes to `self-replace` are documented here.
 - Avoid the use of `atexit` and spawn immediately.  This has the advantage
   that even if the process crashes hard, we already have started the cleanup
   handler.
+- Improve safety of the crate for Windows by avoiding unsupported life before main.
 
 ## 1.3.2
 
