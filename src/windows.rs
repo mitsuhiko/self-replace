@@ -9,7 +9,6 @@ use std::ptr;
 use std::thread;
 use std::time::Duration;
 
-use windows_sys::s;
 use windows_sys::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, GENERIC_READ, HANDLE,
     INVALID_HANDLE_VALUE, MAX_PATH, WAIT_OBJECT_0,
@@ -34,6 +33,13 @@ static TEMP_SUFFIX: &str = ".__temp__.exe";
 
 extern "C" {
     fn _wtoi64(x: *const u16) -> i64;
+}
+
+macro_rules! cstrdup {
+    ($target:ident, $s:expr) => {
+        let mut $target = [0u8; $s.len()];
+        $target.copy_from_slice($s);
+    };
 }
 
 /// Spawn a the temporary exe an instruct it to delete the original exe.
@@ -172,10 +178,15 @@ unsafe extern "C" fn self_delete_on_init() {
     // that process where it will be finally closed, deleting the file.
     let mut pi: PROCESS_INFORMATION = mem::zeroed();
     let mut si: STARTUPINFOA = mem::zeroed();
+
+    // the CreateProcess family of functions wants a mutable pointer to the
+    // cmdline to play around with.  The unicode version is known to do so,
+    // the ANSI version does not but it really needs a copy
+    cstrdup!(cmdline, b"cmd.exe /c exit\x00");
     si.cb = mem::size_of::<STARTUPINFOA>() as _;
     CreateProcessA(
         ptr::null(),
-        s!("cmd.exe /c exit") as *mut _,
+        cmdline.as_mut_ptr(),
         ptr::null(),
         ptr::null(),
         1,

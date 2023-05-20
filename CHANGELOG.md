@@ -6,6 +6,7 @@ All notable changes to `self-replace` are documented here.
 
 - Explicitly pass the process handle on Windows simplifying the implementation.
 - Change the dummy command to use on windows away from `ping.exe` to `cmd.exe`.
+- More correctly invoke `CreateProcessA` on Windows.
 
 ## 1.3.3
 
