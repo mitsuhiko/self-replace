@@ -1,7 +1,7 @@
 use std::env::consts::EXE_EXTENSION;
 
 fn main() {
-    let new_executable = std::env::current_exe()
+    let new_executable = std::fs::read_link(std::env::current_exe().unwrap())
         .unwrap()
         .with_file_name("hello")
         .with_extension(EXE_EXTENSION);
