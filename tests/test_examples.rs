@@ -210,3 +210,44 @@ fn test_self_replace_force_exit() {
     fs::remove_dir_all(&workspace).unwrap();
     assert!(scratchspace.path().read_dir().unwrap().next().is_none());
 }
+
+#[cfg(unix)]
+#[test]
+fn test_self_replace_through_symlink() {
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = scratchspace.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
+    compile_example("replaces-itself");
+    compile_example("hello");
+
+    let exe = get_executable("replaces-itself", &workspace);
+    let hello = get_executable("hello", &workspace);
+
+    let exe_symlink = workspace.join("bin").join("symlink");
+    fs::create_dir_all(exe_symlink.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&exe, &exe_symlink).unwrap();
+
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+    assert!(exe_symlink.is_symlink());
+
+    run(RunOptions {
+        path: &exe_symlink,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "Next time I run, I am the hello executable",
+    });
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+    assert!(exe_symlink.is_symlink());
+    run(RunOptions {
+        path: &exe_symlink,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "Hello World!",
+    });
+
+    fs::remove_dir_all(&workspace).unwrap();
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
+}

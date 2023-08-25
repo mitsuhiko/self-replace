@@ -11,7 +11,10 @@ pub fn self_delete() -> Result<(), io::Error> {
 }
 
 pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
-    let exe = env::current_exe()?;
+    let mut exe = env::current_exe()?;
+    if exe.is_symlink() {
+        exe = fs::read_link(exe)?;
+    }
     let old_permissions = exe.metadata()?.permissions();
 
     let prefix = if let Some(hint) = exe.file_stem().and_then(|x| x.to_str()) {
