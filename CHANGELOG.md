@@ -2,6 +2,11 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.3.6
+
+- Symlinks are now properly resolved.  This allows replacing the executable
+  when it's invoked via a symlink.  #18
+
 ## 1.3.5
 
 - Explicitly pass the process handle on Windows simplifying the implementation.
