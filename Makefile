@@ -14,7 +14,7 @@ check:
 	@cargo check --all
 
 .PHONY: test
-check:
+test:
 	@cargo test --all
 
 .PHONY: format

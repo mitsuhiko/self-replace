@@ -12,7 +12,7 @@ pub fn self_delete() -> Result<(), io::Error> {
 
 pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let mut exe = env::current_exe()?;
-    if exe.is_symlink() {
+    if fs::symlink_metadata(&exe).map_or(false, |x| x.file_type().is_symlink()) {
         exe = fs::read_link(exe)?;
     }
     let old_permissions = exe.metadata()?.permissions();

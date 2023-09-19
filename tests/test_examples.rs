@@ -230,7 +230,10 @@ fn test_self_replace_through_symlink() {
 
     assert!(exe.is_file());
     assert!(hello.is_file());
-    assert!(exe_symlink.is_symlink());
+    assert!(std::fs::symlink_metadata(&exe_symlink)
+        .unwrap()
+        .file_type()
+        .is_symlink());
 
     run(RunOptions {
         path: &exe_symlink,
@@ -240,7 +243,10 @@ fn test_self_replace_through_symlink() {
     });
     assert!(exe.is_file());
     assert!(hello.is_file());
-    assert!(exe_symlink.is_symlink());
+    assert!(std::fs::symlink_metadata(&exe_symlink)
+        .unwrap()
+        .file_type()
+        .is_symlink());
     run(RunOptions {
         path: &exe_symlink,
         force_exit: false,
