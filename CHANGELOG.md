@@ -2,6 +2,11 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.3.7
+
+- Fix windows dependency.  #16
+- Fix examples failing to run on non unix platforms.
+
 ## 1.3.6
 
 - Symlinks are now properly resolved.  This allows replacing the executable
