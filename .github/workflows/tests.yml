@@ -40,7 +40,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.48.0
-      - name: Check
+      - name: Restore MSRV Lock
+        run: cp Cargo.lock.msrv Cargo.lock
+      - name: Test
         run: make test
 
   test-stable-macos:
@@ -52,7 +54,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.56.0
-      - name: Check
+      - name: Restore MSRV Lock
+        run: cp Cargo.lock.msrv Cargo.lock
+      - name: Test
         run: make test
 
   test-stable-windows:
@@ -64,5 +68,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.48.0
-      - name: Check
+      - name: Restore MSRV Lock
+        run: cp Cargo.lock.msrv Cargo.lock
+      - name: Test
         run: make test
