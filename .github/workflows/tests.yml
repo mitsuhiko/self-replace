@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   test-latest-linux:
-    name: Test on Linux
+    name: Test on Latest Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -12,13 +12,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - name: Check
-        run: make check
+      - name: Test
+        run: make test
       - name: Demo
         run: ./demo.sh
 
   test-latest-windows:
-    name: Build on Windows
+    name: Test on Latest Windows
     runs-on: windows-latest
 
     steps:
@@ -26,8 +26,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - name: Check
-        run: make check
+      - name: Test
+        run: make test
       - name: Demo
         run: ./demo.bat
 
