@@ -18,7 +18,7 @@ For details about the implementation refer to the [documentation](https://docs.r
 If you are looking for some higher level update logic, have a look at
 [`self_update`](https://crates.io/crates/self_update) which uses `self-replace`
 under the hood but provides automatic updating from GitHub releases or
-other distribution channels.  Not that `self_update` is maintained by
+other distribution channels.  Note that `self_update` is maintained by
 other maintainers.
 
 ## Uninstall
