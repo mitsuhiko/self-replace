@@ -15,6 +15,12 @@ want to implement a form of self updating or self uninstallation.
 
 For details about the implementation refer to the [documentation](https://docs.rs/self-replace).
 
+If you are looking for some higher level update logic, have a look at
+[`self_update`](https://crates.io/crates/self_update) which uses `self-replace`
+under the hood but provides automatic updating from GitHub releases or
+other distribution channels.  Not that `self_update` is maintained by
+other maintainers.
+
 ## Uninstall
 
 To uninstall a binary, use `self_delete`.
