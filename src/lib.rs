@@ -192,3 +192,31 @@ pub fn self_replace<P: AsRef<Path>>(new_executable: P) -> Result<(), io::Error> 
         crate::windows::self_replace(new_executable.as_ref())
     }
 }
+
+/// Replaces the running executable with a different one.
+///
+/// This replaces the binary with another binary.  The provided buffer is written over the
+/// old executable.
+///
+/// ```
+/// # fn foo(new_binary_content: &[u8]) -> Result<(), std::io::Error> {
+/// self_replace::self_replace_with(new_binary_content)?;
+/// # Ok(()) }
+/// ```
+///
+/// Note that after this function concludes, the new executable is written to the
+/// old location, and the previous executable has been moved to a temporary alternative
+/// location.  This also means that if you want to manipulate that file further (for
+/// instance to change the permissions) you can do so.
+///
+/// By default the permissions of the original file are restored.
+pub fn self_replace_with<B: AsRef<[u8]>>(new_executable_content: B) -> Result<(), io::Error> {
+    #[cfg(unix)]
+    {
+        crate::unix::self_replace_with(new_executable_content.as_ref())
+    }
+    #[cfg(windows)]
+    {
+        crate::windows::self_replace_with(new_executable_content.as_ref())
+    }
+}

@@ -18,6 +18,12 @@ echo Run replaces-itself.exe
 target\debug\examples\replaces-itself.exe
 
 echo.
+echo Run replaces-itself-with.exe
+target\debug\examples\replaces-itself-with.exe
+echo Run replaces-itself-with.exe
+target\debug\examples\replaces-itself-with.exe
+
+echo.
 echo Run deletes-itself-outside-path.exe
 target\debug\examples\deletes-itself-outside-path.exe
 if not exist target\debug\examples\NUL (

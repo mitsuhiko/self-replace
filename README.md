@@ -39,6 +39,14 @@ self_replace::self_replace(&new_binary)?;
 std::fs::remove_file(&new_binary)?;
 ```
 
+To update a binary with data from a remote source, use `self_replace_with`.
+
+```rust
+fn foo(new_binary_content: &[u8]) -> Result<()> {
+    self_replace::self_replace_with(new_binary_content)?;
+}
+```
+
 ## License and Links
 
 * [Documentation](https://docs.rs/self-replace/)

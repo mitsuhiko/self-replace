@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::mem;
 use std::os::windows::prelude::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -288,6 +289,21 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     schedule_self_deletion_on_shutdown(&old_exe, None)?;
     let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
     fs::copy(new_executable, &temp_exe)?;
+    fs::rename(&temp_exe, &exe)?;
+    Ok(())
+}
+
+/// This does the same as self_replace, except it writes new content from a buffer
+/// instead of handling an existing new executable file.
+pub fn self_replace_with(new_executable_content: &[u8]) -> Result<(), io::Error> {
+    let exe = env::current_exe()?.canonicalize()?;
+    let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
+    fs::rename(&exe, &old_exe)?;
+    schedule_self_deletion_on_shutdown(&old_exe, None)?;
+    let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
+    let mut new_executable = fs::File::create(&temp_exe)?;
+    new_executable.write_all(new_executable_content)?;
+    new_executable.flush()?;
     fs::rename(&temp_exe, &exe)?;
     Ok(())
 }

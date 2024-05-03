@@ -257,3 +257,37 @@ fn test_self_replace_through_symlink() {
     fs::remove_dir_all(&workspace).unwrap();
     assert!(scratchspace.path().read_dir().unwrap().next().is_none());
 }
+
+#[test]
+fn test_self_replace_with() {
+    let scratchspace = tempfile::tempdir().unwrap();
+    let workspace = scratchspace.path().join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
+    compile_example("replaces-itself-with");
+    compile_example("hello");
+
+    let exe = get_executable("replaces-itself-with", &workspace);
+    let hello = get_executable("hello", &workspace);
+
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+
+    run(RunOptions {
+        path: &exe,
+        force_exit: true,
+        scratchspace: scratchspace.path(),
+        expected_output: "Next time I run, I am the hello executable",
+    });
+    assert!(exe.is_file());
+    assert!(hello.is_file());
+    run(RunOptions {
+        path: &exe,
+        force_exit: false,
+        scratchspace: scratchspace.path(),
+        expected_output: "Hello World!",
+    });
+
+    fs::remove_dir_all(&workspace).unwrap();
+    assert!(scratchspace.path().read_dir().unwrap().next().is_none());
+}

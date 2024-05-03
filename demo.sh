@@ -18,6 +18,12 @@ echo "Run replaces-itself"
 target/debug/examples/replaces-itself
 
 echo
+echo "Run replaces-itself-with"
+target/debug/examples/replaces-itself-with
+echo "Run replaces-itself-with"
+target/debug/examples/replaces-itself-with
+
+echo
 echo "Run deletes-itself-outside-path"
 target/debug/examples/deletes-itself-outside-path
 
