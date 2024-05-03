@@ -262,6 +262,19 @@ fn get_directory_of(p: &Path) -> Result<&Path, io::Error> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no parent"))
 }
 
+fn prepare_current_exe() -> Result<(PathBuf, PathBuf), io::Error> {
+    let exe = env::current_exe()?.canonicalize()?;
+    let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
+    fs::rename(&exe, &old_exe)?;
+    schedule_self_deletion_on_shutdown(&old_exe, None)?;
+    let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
+    Ok((temp_exe, exe))
+}
+
+fn finalize_updated_exe(temp_exe: PathBuf, exe: PathBuf) -> Result<(), io::Error> {
+    fs::rename(&temp_exe, &exe)
+}
+
 /// The logic here is a bit like the following:
 ///
 /// 1. First we create a copy of our executable in a way that we can actually make it
@@ -283,27 +296,19 @@ pub fn self_delete(protected_path: Option<&Path>) -> Result<(), io::Error> {
 /// This is similar to self_delete, but first renames the executable to a new temporary
 /// location so that the executable can be updated by the given other one.
 pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
-    let exe = env::current_exe()?.canonicalize()?;
-    let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
-    fs::rename(&exe, &old_exe)?;
-    schedule_self_deletion_on_shutdown(&old_exe, None)?;
-    let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
+    let (temp_exe, exe) = prepare_current_exe()?;
     fs::copy(new_executable, &temp_exe)?;
-    fs::rename(&temp_exe, &exe)?;
+    finalize_updated_exe(temp_exe, exe)?;
     Ok(())
 }
 
 /// This does the same as self_replace, except it writes new content from a buffer
 /// instead of handling an existing new executable file.
 pub fn self_replace_with(new_executable_content: &[u8]) -> Result<(), io::Error> {
-    let exe = env::current_exe()?.canonicalize()?;
-    let old_exe = get_temp_executable_name(get_directory_of(&exe)?, RELOCATED_SUFFIX);
-    fs::rename(&exe, &old_exe)?;
-    schedule_self_deletion_on_shutdown(&old_exe, None)?;
-    let temp_exe = get_temp_executable_name(get_directory_of(&exe)?, TEMP_SUFFIX);
+    let (temp_exe, exe) = prepare_current_exe()?;
     let mut new_executable = fs::File::create(&temp_exe)?;
     new_executable.write_all(new_executable_content)?;
     new_executable.flush()?;
-    fs::rename(&temp_exe, &exe)?;
+    finalize_updated_exe(temp_exe, exe)?;
     Ok(())
 }
