@@ -1,6 +1,5 @@
 # Self-Replace: A Utility For Self Replacing Executables
 
-[![Build Status](https://github.com/mitsuhiko/self-replace/workflows/Tests/badge.svg?branch=main)](https://github.com/mitsuhiko/self-replace/actions?query=workflow%3ATests)
 [![Crates.io](https://img.shields.io/crates/d/self-replace.svg)](https://crates.io/crates/self-replace)
 [![License](https://img.shields.io/github/license/mitsuhiko/self-replace)](https://github.com/mitsuhiko/self-replace/blob/main/LICENSE)
 [![rustc 1.48.0](https://img.shields.io/badge/rust-1.48%2B-orange.svg)](https://img.shields.io/badge/rust-1.48%2B-orange.svg)
