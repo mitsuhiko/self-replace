@@ -133,13 +133,20 @@ mod windows;
 /// # Ok(()) }
 /// ```
 pub fn self_delete() -> Result<(), io::Error> {
+    self_delete_at(std::env::current_exe()?)
+}
+
+/// Like [`self_delete`] but accepts a path which is assumed to be the current executable path.
+///
+/// This can be useful if the executable was moved to a different location while it was running.
+pub fn self_delete_at<P: AsRef<Path>>(exe: P) -> Result<(), io::Error> {
     #[cfg(unix)]
     {
-        crate::unix::self_delete()
+        crate::unix::self_delete(exe.as_ref())
     }
     #[cfg(windows)]
     {
-        crate::windows::self_delete(None)
+        crate::windows::self_delete(exe.as_ref(), None)
     }
 }
 
@@ -150,14 +157,15 @@ pub fn self_delete() -> Result<(), io::Error> {
 /// of the deletion operation.  This is necessary to demolish folder more complex folder
 /// structures on Windows.
 pub fn self_delete_outside_path<P: AsRef<Path>>(p: P) -> Result<(), io::Error> {
+    let exe = std::env::current_exe()?;
     #[cfg(unix)]
     {
         let _ = p;
-        crate::unix::self_delete()
+        crate::unix::self_delete(&exe)
     }
     #[cfg(windows)]
     {
-        crate::windows::self_delete(Some(p.as_ref()))
+        crate::windows::self_delete(&exe, Some(p.as_ref()))
     }
 }
 

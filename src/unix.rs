@@ -4,8 +4,8 @@ use std::io;
 use std::path::Path;
 
 /// On Unix a running executable can be safely deleted.
-pub fn self_delete() -> Result<(), io::Error> {
-    let exe = env::current_exe()?.canonicalize()?;
+pub fn self_delete(exe: &Path) -> Result<(), io::Error> {
+    let exe = exe.canonicalize()?;
     fs::remove_file(exe)?;
     Ok(())
 }
