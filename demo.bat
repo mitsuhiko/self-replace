@@ -8,6 +8,15 @@ if not exist target\debug\examples\deletes-itself.exe (
 )
 
 echo.
+echo Run deletes-itself-at.exe
+target\debug\examples\deletes-itself-at.exe
+if not exist target\debug\examples\deletes-itself-at.exe (
+    if not exist target\debug\examples\deletes-itself-renamed.exe (
+        echo   deletes-itself-at.exe and deletes-itself-renamed.exe were successfully deleted
+    )
+)
+
+echo.
 echo Run hello.exe
 target\debug\examples\hello.exe
 

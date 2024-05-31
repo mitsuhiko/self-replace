@@ -273,9 +273,8 @@ fn get_directory_of(p: &Path) -> Result<&Path, io::Error> {
 ///    actually shuts down.
 /// 4. In `self_delete_on_init` spawn a dummy process so that windows deletes the
 ///    copy too.
-pub fn self_delete(protected_path: Option<&Path>) -> Result<(), io::Error> {
-    let exe = env::current_exe()?.canonicalize()?;
-    schedule_self_deletion_on_shutdown(&exe, protected_path)?;
+pub fn self_delete(exe: &Path, protected_path: Option<&Path>) -> Result<(), io::Error> {
+    schedule_self_deletion_on_shutdown(exe, protected_path)?;
     Ok(())
 }
 
