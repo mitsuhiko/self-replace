@@ -2,6 +2,10 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.4.0
+
+- Added `self_delete_at`.  #22
+
 ## 1.3.7
 
 - Fix windows dependency.  #16
