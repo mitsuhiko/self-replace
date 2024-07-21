@@ -21,8 +21,8 @@ exclude = ["examples", "demo*"]
 tempfile = "3.6"
 
 [target."cfg(windows)".dependencies]
-fastrand = "1.9.0"
-windows-sys = { version = "0.48", features = [
+fastrand = "2.1.0"
+windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
     "Win32_System_Environment",
