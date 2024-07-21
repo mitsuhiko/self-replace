@@ -138,7 +138,10 @@ pub fn self_delete() -> Result<(), io::Error> {
 
 /// Like [`self_delete`] but accepts a path which is assumed to be the current executable path.
 ///
-/// This can be useful if the executable was moved to a different location while it was running.
+/// This can be useful if the executable was moved to a different location while
+/// it was running.  Note that on Windows this has no effect on the name given
+/// to the temporary files.  They are always based on the original, reported
+/// file name of the current executable.
 pub fn self_delete_at<P: AsRef<Path>>(exe: P) -> Result<(), io::Error> {
     #[cfg(unix)]
     {
