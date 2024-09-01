@@ -14,7 +14,7 @@ keywords = [
     "replace",
     "uninstall",
 ]
-rust-version = "1.48"
+rust-version = "1.63"
 exclude = ["examples", "demo*"]
 
 [dependencies]
