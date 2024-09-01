@@ -32,42 +32,42 @@ jobs:
         run: ./demo.bat
 
   test-stable-linux:
-    name: Test on 1.48.0 Linux
+    name: Test on 1.63.0 Linux
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.48.0
+          toolchain: 1.63.0
       - name: Restore MSRV Lock
         run: cp Cargo.lock.msrv Cargo.lock
       - name: Test
         run: make test
 
   test-stable-macos:
-    name: Test on 1.56.0 macOS
+    name: Test on 1.63.0 macOS
     runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.56.0
+          toolchain: 1.63.0
       - name: Restore MSRV Lock
         run: cp Cargo.lock.msrv Cargo.lock
       - name: Test
         run: make test
 
   test-stable-windows:
-    name: Test on 1.48.0 Windows
+    name: Test on 1.63.0 Windows
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.48.0
+          toolchain: 1.63.0
       - name: Restore MSRV Lock
         run: cp Cargo.lock.msrv Cargo.lock
       - name: Test
