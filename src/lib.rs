@@ -125,7 +125,7 @@ mod windows;
 /// The deletion on windows is delayed until the process shuts down.  For updating
 /// instead of deleting, use [`self_replace`] instead.  Not that you must only
 /// only call this function once during the execution of the program and you should
-/// exist quickly afterwards to make the delete take effect on Windows.
+/// exit quickly afterwards to make the delete take effect on Windows.
 ///
 /// ```
 /// # fn foo() -> Result<(), std::io::Error> {
