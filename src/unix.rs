@@ -18,7 +18,7 @@ pub fn self_replace(new_executable: &Path) -> Result<(), io::Error> {
     let old_permissions = exe.metadata()?.permissions();
 
     let prefix = if let Some(hint) = exe.file_stem().and_then(|x| x.to_str()) {
-        format!(".{}.__temp__", hint)
+        format!(".{hint}.__temp__")
     } else {
         ".__temp__".into()
     };
