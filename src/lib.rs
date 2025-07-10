@@ -2,7 +2,7 @@
 //! versions or to uninstall themselves.  On Unix systems this is a simple feat, but
 //! on Windows a few hacks are needed which is why this crate exists.
 //!
-//! This is a useful operation when working with single-executable utilties that
+//! This is a useful operation when working with single-executable utilities that
 //! want to implement a form of self updating or self uninstallation.
 //!
 //! ## Self Deletion
@@ -20,7 +20,7 @@
 //! ```
 //!
 //! On Windows self deletion requires some place in the folder the deletion is taking
-//! place.  This will prevent the abiltiy of the program to also delete the folder the
+//! place.  This will prevent the ability of the program to also delete the folder the
 //! executable is placed in.  To avoid this you can use the [`self_delete_outside_path`]
 //! function which will ensure that the deletion does not take place in the path
 //! provided if it's possible to do so.  That way you can delete entire structures safely.
@@ -93,7 +93,7 @@
 //! is that it requires that the new replacing executable has matching logic for the
 //! cleanup.  The second issue with this approach is that it requires either launching
 //! the new executable or waiting for the executable to launch for natural reasons.
-//! The former might not always be preferrable, the second leaves files lingering
+//! The former might not always be preferable, the second leaves files lingering
 //! around for an extended period of time.
 //!
 //! The third, and somewhat official solution is to use `MOVEFILE_DELAY_UNTIL_REBOOT`
@@ -119,6 +119,9 @@ use std::path::Path;
 mod unix;
 #[cfg(windows)]
 mod windows;
+
+#[cfg(not(any(windows, unix)))]
+compile_error!("self-replace cannot be built for this target (only windows and unix is supported)");
 
 /// Deletes the executable in a platform independent manner.
 ///
@@ -151,6 +154,11 @@ pub fn self_delete_at<P: AsRef<Path>>(exe: P) -> Result<(), io::Error> {
     {
         crate::windows::self_delete(exe.as_ref(), None)
     }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = exe;
+        unimplemented!();
+    }
 }
 
 /// Like [`self_delete`] but accepts a path which must not be used for temporary operations.
@@ -169,6 +177,12 @@ pub fn self_delete_outside_path<P: AsRef<Path>>(p: P) -> Result<(), io::Error> {
     #[cfg(windows)]
     {
         crate::windows::self_delete(&exe, Some(p.as_ref()))
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = p;
+        let _ = exe;
+        unimplemented!();
     }
 }
 
@@ -201,5 +215,10 @@ pub fn self_replace<P: AsRef<Path>>(new_executable: P) -> Result<(), io::Error> 
     #[cfg(windows)]
     {
         crate::windows::self_replace(new_executable.as_ref())
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = new_executable;
+        unimplemented!();
     }
 }
