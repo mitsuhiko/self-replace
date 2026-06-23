@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, LocalFree, DUPLICATE_SAME_ACCESS, GENERIC_READ, HANDLE,
+    CloseHandle, DuplicateHandle, LocalFree, DUPLICATE_SAME_ACCESS, GENERIC_READ, HANDLE, HMODULE,
     INVALID_HANDLE_VALUE, MAX_PATH, WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
@@ -64,7 +64,7 @@ fn spawn_tmp_exe_to_delete_parent(
             &sa,
             OPEN_EXISTING,
             FILE_FLAG_DELETE_ON_CLOSE,
-            0,
+            0 as HANDLE,
         )
     };
     if tmp_handle == INVALID_HANDLE_VALUE {
@@ -73,7 +73,7 @@ fn spawn_tmp_exe_to_delete_parent(
 
     // We need to upgrade the pseudo current process handle to the real one for the
     // temp executable.
-    let mut process_handle = 0;
+    let mut process_handle = 0 as HANDLE;
     unsafe {
         if DuplicateHandle(
             GetCurrentProcess(),
@@ -91,7 +91,7 @@ fn spawn_tmp_exe_to_delete_parent(
     };
 
     Command::new(tmp_exe)
-        .arg(process_handle.to_string())
+        .arg((process_handle as isize).to_string())
         .arg(original_exe)
         .spawn()?;
 
@@ -134,7 +134,7 @@ unsafe extern "C" fn self_delete_on_init() {
     // requires allocating an extra buffer on every startup and that seems pointless
     // for such an uncommon case.
     let mut exe_path = [0u16; MAX_PATH as _];
-    let exe_path_len = GetModuleFileNameW(0, exe_path.as_mut_ptr(), MAX_PATH);
+    let exe_path_len = GetModuleFileNameW(0 as HMODULE, exe_path.as_mut_ptr(), MAX_PATH);
     if exe_path_len == 0
         || exe_path[..exe_path_len as _]
             .iter()
