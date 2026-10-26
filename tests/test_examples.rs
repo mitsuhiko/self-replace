@@ -25,8 +25,9 @@ fn compile_examples() -> HashMap<String, PathBuf> {
     let mut rv = HashMap::new();
 
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let Ok(message) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
+        let message = match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(message) => message,
+            Err(_) => continue,
         };
 
         let is_example = message
@@ -44,11 +45,8 @@ fn compile_examples() -> HashMap<String, PathBuf> {
 
         let executable = message.get("executable").and_then(|exe| exe.as_str());
 
-        if is_example && built_name.is_some() && executable.is_some() {
-            rv.insert(
-                built_name.unwrap().to_string(),
-                PathBuf::from(executable.unwrap()),
-            );
+        if let (true, Some(built_name), Some(executable)) = (is_example, built_name, executable) {
+            rv.insert(built_name.to_string(), PathBuf::from(executable));
         }
     }
 
@@ -71,7 +69,7 @@ fn compile_example(name: &str) -> PathBuf {
 
 fn get_executable(exe: &Path, tempdir: &Path) -> PathBuf {
     let final_exe = tempdir.join(exe.file_name().unwrap());
-    fs::copy(&exe, &final_exe).unwrap();
+    fs::copy(exe, &final_exe).unwrap();
     final_exe
 }
 
