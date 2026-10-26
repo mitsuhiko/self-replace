@@ -2,6 +2,12 @@
 
 All notable changes to `self-replace` are documented here.
 
+## 1.5.1
+
+- Widened the `windows-sys` dependency to `>=0.52, <0.62` to avoid
+  duplicate versions in dependency graphs.  #34
+- Unsupported targets now fail with a clear compile error.  #32
+
 ## 1.5.0
 
 - Raised MSRV to 1.63 and upgraded windows-sys to 0.52.  #26
